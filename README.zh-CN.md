@@ -131,15 +131,29 @@ linux {
 }
 ```
 
-于是 jpackage 回退到 Compose Multiplatform 的默认图标，AppImage 里带的
-`usr/lib/Ani.png` 其实是 **Kotlin 的 logo**，不是 Animeko 的（直接用它会让启动器里出现一个
-Kotlin 图标）。
+于是 jpackage 回退到 Compose Multiplatform 的默认图标——`usr/lib/Ani.png`（1024×1024）
+**确实是 Kotlin 的 logo**。这个文件没有采用。
 
-这里改为从上游取真图标：`app/desktop/icons/` 下的 `a_1024x1024_rounded.ico` 和
-`a_512x512.icns` 内部都是 PNG，其中 `.icns` 里有一张 1024×1024，解出来存为
-`icons/upstream-a_1024.png`，再缩放成实际安装的几档尺寸。这与应用自己给窗口和托盘渲染的
-是同一张图——`desktop-6.1.0.jar` 里的
-`composeResources/me.him188.ani.desktop.generated.resources/drawable/a_round.png`。
+不过 AppImage 根目录里**本来就带着真正的 Animeko 图标**：`icon.png`（`.DirIcon` 指向它），
+512×512，另外 `usr/lib/app/resources/icon.png` 是同一份拷贝：
+
+```
+icon.png                                   # .DirIcon，512x512，真图标
+usr/lib/Ani.png                            # jpackage 图标槽 —— Kotlin 默认图
+usr/lib/app/desktop-6.1.0.jar
+  └── composeResources/.../drawable/a_round.png   # 应用窗口/托盘自己画的图标，192x192
+```
+
+本包安装的就是这个根目录的 `icon.png`：512×512 那一档是它**逐字节的原文件**
+（md5 相同），128/256 是它的 Lanczos 缩放。`icons/appimage-icon.png` 保存了这份原始文件，
+这样不必解包 780 MB 的 AppImage 也能复现和核对：
+
+```sh
+magick icons/appimage-icon.png -filter Lanczos -resize 256x256 icons/me.him188.ani-256.png
+```
+
+（上游 `app/desktop/icons/a_512x512.icns` 里是同一个 logo，但带 macOS 那种更大的留白，
+放到 Linux 桌面上看起来会明显偏小，所以没有采用。）
 
 ## 构建
 
@@ -221,8 +235,8 @@ manifest 里 AppImage 用的是官方 release 的 URL（带 sha256 校验），�
 | `ani-wrapper` | `/app/bin/ani` 入口脚本 |
 | `me.him188.ani.desktop` | 桌面入口 |
 | `me.him188.ani.metainfo.xml` | AppStream 元数据 |
-| `icons/me.him188.ani-*.png` | 实际安装的图标，由上游 1024×1024 素材缩放而来 |
-| `icons/upstream-a_1024.png` | 该素材，从上游 `a_512x512.icns` 解出 |
+| `icons/me.him188.ani-*.png` | 实际安装的图标；512×512 是 AppImage 自带 `icon.png` 的原文件，128/256 为其缩放 |
+| `icons/appimage-icon.png` | 该原始文件，保留以便复现图标生成过程 |
 | `LICENSE.txt` | 上游 AGPL-3.0 许可证 |
 
 ## 许可

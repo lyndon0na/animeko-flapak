@@ -144,17 +144,33 @@ linux {
 }
 ```
 
-so jpackage falls back to Compose Multiplatform's default icon and the AppImage
-ships `usr/lib/Ani.png` — the **Kotlin logo**, not Animeko's. Using that would
-put a Kotlin icon in the launcher.
+so jpackage falls back to Compose Multiplatform's default icon for its icon slot,
+and `usr/lib/Ani.png` (1024×1024) really is the **Kotlin logo**. That file is not
+used.
 
-The real icon is taken from upstream instead: `a_1024x1024_rounded.ico` and
-`a_512x512.icns` in `app/desktop/icons/` both wrap PNGs, and the `.icns` contains
-a 1024×1024 one, which is decoded to `icons/upstream-a_1024.png` and used to
-derive the shipped sizes. That is the same artwork the app itself renders for the
-window and tray from
-`composeResources/me.him188.ani.desktop.generated.resources/drawable/a_round.png`
-inside `desktop-6.1.0.jar`.
+The AppImage still carries the real Animeko icon at its root, as `icon.png` —
+which `.DirIcon` points at — at 512×512, with a second copy at
+`usr/lib/app/resources/icon.png`:
+
+```
+icon.png                                   # .DirIcon, 512x512, the real logo
+usr/lib/Ani.png                            # jpackage icon slot - Kotlin default
+usr/lib/app/desktop-6.1.0.jar
+  └── composeResources/.../drawable/a_round.png   # in-app window/tray icon, 192x192
+```
+
+That root `icon.png` is what this package installs: the 512×512 entry is that
+file verbatim (same md5) and 128/256 are Lanczos downscales of it.
+`icons/appimage-icon.png` is a copy of that source so the derivation can be
+reproduced and checked without unpacking 780 MB of AppImage:
+
+```sh
+magick icons/appimage-icon.png -filter Lanczos -resize 256x256 icons/me.him188.ani-256.png
+```
+
+(Upstream's `app/desktop/icons/a_512x512.icns` holds the same logo with macOS's
+larger safe-area padding, so it renders noticeably smaller on a Linux desktop and
+is not used.)
 
 ## Building
 
@@ -246,8 +262,8 @@ release asset rather than committing it.
 | `ani-wrapper` | `/app/bin/ani` entry point |
 | `me.him188.ani.desktop` | launcher entry |
 | `me.him188.ani.metainfo.xml` | AppStream metadata |
-| `icons/me.him188.ani-*.png` | shipped icons, derived from upstream's 1024×1024 artwork |
-| `icons/upstream-a_1024.png` | that artwork, decoded from upstream's `a_512x512.icns` |
+| `icons/me.him188.ani-*.png` | shipped icons; 512×512 is the AppImage's `icon.png` verbatim, 128/256 are downscales |
+| `icons/appimage-icon.png` | that source file, kept so the derivation is reproducible |
 | `README.zh-CN.md` | this document in Simplified Chinese |
 | `LICENSE.txt` | upstream's AGPL-3.0 license |
 
