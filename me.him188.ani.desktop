@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Animeko
+GenericName=Anime Streaming Platform
+GenericName[zh_CN]=追番平台
+Comment=Watch anime with danmaku, cloud sync and BitTorrent streaming
+Comment[zh_CN]=集找番、追番、看番的一站式弹幕追番平台
+Exec=ani
+Icon=me.him188.ani
+Terminal=false
+Categories=AudioVideo;Player;Video;
+Keywords=anime;bangumi;danmaku;animeko;ani;
+Keywords[zh_CN]=番剧;弹幕;追番;动漫;
+StartupNotify=true
+StartupWMClass=me-him188-ani-app-desktop-AniDesktop

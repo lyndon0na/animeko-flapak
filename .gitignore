@@ -1,0 +1,18 @@
+# Upstream AppImage. flatpak-builder fetches this from the release URL, and a
+# local copy is only needed for offline builds.
+ani-*-linux-x86_64.appimage
+
+# flatpak-builder working state
+.flatpak-builder/
+build/
+repo/
+
+# Exported bundles. These are ~280 MB, well over GitHub's 100 MB per-file limit,
+# so publish them as release assets rather than committing them.
+*.flatpak
+
+# Left behind by `--appimage-extract`
+squashfs-root/
+
+# Command Code agent state (taste learnings etc.) - not part of this project
+.commandcode/

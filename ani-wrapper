@@ -1,0 +1,15 @@
+#!/bin/sh
+# Entry point for the Animeko Flatpak.
+#
+# Mirrors the AppImage's AppRun without exporting LD_LIBRARY_PATH: the jpackage
+# launcher already appends its own app directory to LD_LIBRARY_PATH (which is
+# what feeds java.library.path for libanitorrent, libmediampv and Skiko), and
+# overwriting the value Flatpak sets up can break loading of runtime libraries.
+set -eu
+
+APPDIR=/app/ani
+export APPDIR
+export PATH="$APPDIR/usr/bin:$PATH"
+export XDG_DATA_DIRS="$APPDIR/usr/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
+
+exec "$APPDIR/usr/bin/Ani" "$@"

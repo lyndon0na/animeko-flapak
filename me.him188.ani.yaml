@@ -1,0 +1,96 @@
+# Animeko (Ani) repackaged as a Flatpak from the official Linux AppImage.
+#
+# The upstream AppImage ships a jpackage (JetBrains Runtime 21) launcher that
+# mis-sizes its JvmlLauncherData buffer when the classpath is very long:
+# Animeko's 274 jars expand to roughly 37 KB, the launcher silently truncates
+# the classpath after ~5.3 KB and then overwrites its own environment-variable
+# pointer array, so setenv() dereferences garbage and the process dies with
+# SIGSEGV before the JVM starts.
+#
+# make-bootstrap.py moves the jar list out of Ani.cfg and into a manifest
+# Class-Path attribute of a single bootstrap jar, which keeps the launcher's
+# classpath down to one short entry. See README.md for the full analysis.
+
+app-id: me.him188.ani
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: ani
+
+finish-args:
+  # Streaming, BitTorrent, Bangumi/danmaku APIs, analytics.
+  - --share=network
+  # X11 shared memory. JCEF forces --ozone-platform=x11, and Skiko/AWT render
+  # through XWayland, so an X11 socket is mandatory even on Wayland sessions.
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  # VA-API hardware decoding for mpv/FFmpeg and GPU access for Skiko.
+  - --device=dri
+  # The media cache and download folders are user-selectable paths, so the app
+  # needs real filesystem access rather than a portal file descriptor.
+  # Narrow this to e.g. xdg-videos/xdg-download if you prefer.
+  - --filesystem=home
+  # Removable media picked as a cache location. Uncomment as needed:
+  # - --filesystem=/run/media
+  # - --filesystem=/media
+  # System tray and notifications. Compose's tray helper registers the bus name
+  # org.kde.StatusNotifierItem-<pid>-1 over sd-bus directly. Flatpak cannot
+  # express a wildcard for that hyphenated name, and the sandbox always gives
+  # the app the same PID, so the exact name can be granted.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.StatusNotifierItem-2-1
+  - --talk-name=org.freedesktop.Notifications
+
+build-options:
+  # Everything here is prebuilt by upstream; stripping the bundled JRE, libcef
+  # and the mediamp/libtorrent libraries gains nothing and risks mangling them.
+  strip: false
+  no-debuginfo: true
+
+modules:
+  - name: animeko
+    buildsystem: simple
+    build-commands:
+      - chmod +x ani-6.1.0-linux-x86_64.appimage
+      - ./ani-6.1.0-linux-x86_64.appimage --appimage-extract
+      - install -d "${FLATPAK_DEST}/ani"
+      - cp -a squashfs-root/usr "${FLATPAK_DEST}/ani/"
+      # Rewrite the launcher config and build the bootstrap jar. Must run after
+      # the tree is in place, because it resolves the jar names against it.
+      - python3 make-bootstrap.py "${FLATPAK_DEST}/ani/usr/lib/app"
+      - install -Dm755 ani-wrapper "${FLATPAK_DEST}/bin/ani"
+      - install -Dm644 me.him188.ani.desktop
+        "${FLATPAK_DEST}/share/applications/me.him188.ani.desktop"
+      - install -Dm644 me.him188.ani.metainfo.xml
+        "${FLATPAK_DEST}/share/metainfo/me.him188.ani.metainfo.xml"
+      - install -Dm644 me.him188.ani-512.png
+        "${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/me.him188.ani.png"
+      - install -Dm644 me.him188.ani-256.png
+        "${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/me.him188.ani.png"
+      - install -Dm644 me.him188.ani-128.png
+        "${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/me.him188.ani.png"
+    sources:
+      # Fetched from the upstream release. sha256 matches the published asset
+      # (open-ani/animeko v6.1.0, 336849400 bytes).
+      # For an offline build, replace this entry with:
+      #   - type: file
+      #     path: ani-6.1.0-linux-x86_64.appimage
+      - type: file
+        url: https://github.com/open-ani/animeko/releases/download/v6.1.0/ani-6.1.0-linux-x86_64.appimage
+        sha256: abeeab01daf4a08ab1cd7c4d9c6999b1741a577d93ad7e2ef28b80ea12296aa7
+      - type: file
+        path: make-bootstrap.py
+      - type: file
+        path: ani-wrapper
+      - type: file
+        path: me.him188.ani.desktop
+      - type: file
+        path: me.him188.ani.metainfo.xml
+      - type: file
+        path: icons/me.him188.ani-512.png
+      - type: file
+        path: icons/me.him188.ani-256.png
+      - type: file
+        path: icons/me.him188.ani-128.png
