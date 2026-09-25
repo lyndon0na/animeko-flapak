@@ -111,15 +111,16 @@ be anywhere. Narrow it to `xdg-videos` / `xdg-download`, or uncomment the
 
 ## CI
 
-`.github/workflows/build.yml` builds and verifies the Flatpak, uploads the bundle
-as a workflow artifact, and publishes it as a GitHub release. The release tag is
-derived from the version pinned in the manifest, so:
+`.github/workflows/build.yml`:
 
-* a push to `main`, or a manual dispatch, refreshes the release for the current
-  version — no tag is needed to get a downloadable bundle;
-* bumping the AppImage version in the manifest creates a new release on the next
-  build;
-* a `v*` tag publishes the same way, if you prefer to mark the commit.
+* a push to `main` or a manual dispatch builds, verifies the packaged tree and
+  uploads the bundle as a workflow artifact;
+* a `v*` tag additionally creates a GitHub release and attaches the bundle to it.
+
+```sh
+git tag v6.1.0
+git push origin v6.1.0
+```
 
 The runner is headless, so the GUI smoke test runs under Xvfb as a best-effort
 step that reports without failing the build. The structural check of the packaged
