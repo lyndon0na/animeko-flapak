@@ -103,15 +103,21 @@ jobs:
           path: ${{ steps.bundle.outputs.name }}
           if-no-files-found: error
 
-      - name: Create or update the release
-        if: startsWith(github.ref, 'refs/tags/v')
+      # Every successful build publishes, so a push to main is enough to get a
+      # downloadable bundle. The release tag is derived from the version pinned
+      # in the manifest, so runs that do not bump that version refresh the same
+      # release (the asset is replaced), and bumping it creates a new one.
+      #
+      # `--target` is ignored by GitHub when the tag already exists, so passing
+      # it unconditionally is safe for tag pushes too.
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          tag="$GITHUB_REF_NAME"
-          asset="${{ steps.bundle.outputs.name }}"
           version="${{ steps.bundle.outputs.version }}"
+          asset="${{ steps.bundle.outputs.name }}"
+          tag="v${version}"
           notes="$RUNNER_TEMP/release-notes.md"
 
           {
@@ -121,14 +127,18 @@ jobs:
             echo "Install with:"
             echo
             echo '```'
-            echo "flatpak install --user ${asset}"
-            echo "flatpak run me.him188.ani"
+            echo "curl -LO ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/latest/download/${asset}"
+            echo "flatpak install --user ./${asset}"
             echo '```'
             echo
             echo "Requires org.gnome.Platform 49."
+            echo
+            echo "Built from \`${GITHUB_SHA}\` on ${GITHUB_REF_NAME}."
           } > "$notes"
 
           if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" --title "Animeko ${version} (Flatpak)" --notes-file "$notes"
+            gh release create "$tag" --target "$GITHUB_SHA" \
+              --title "Animeko ${version} (Flatpak)" --notes-file "$notes"
           fi
           gh release upload "$tag" "$asset" --clobber
+          echo "published: $(gh release view "$tag" --json url --jq .url)"

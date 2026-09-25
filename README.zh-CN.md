@@ -109,15 +109,13 @@ manifest 里的 `/run/media` 与 `/media`。
 
 ## CI
 
-`.github/workflows/build.yml`：
+`.github/workflows/build.yml` 构建并校验 Flatpak，把 bundle 作为 workflow artifact 上传，
+同时发布为 GitHub Release。Release 的 tag 由 manifest 里钉住的版本号推导，所以：
 
-* 推送到 `main` 或手动触发：构建 → 校验产物目录 → 上传 bundle 作为 workflow artifact；
-* 推送 `v*` 标签：额外创建 GitHub Release 并把 bundle 作为附件发布。
-
-```sh
-git tag v6.1.0
-git push origin v6.1.0
-```
+* 推送到 `main`（或手动触发）就会刷新「当前版本」那个 Release 的附件，
+  **不需要额外打 tag 就能拿到可下载的包**；
+* 把 manifest 里的 AppImage 版本换成新版本，下次构建会自动建出对应的新 Release；
+* 想明确标记提交也可以照常推 `v*` 标签，效果相同。
 
 Runner 没有显示器，所以 GUI 冒烟测试在 Xvfb 下尽力而为地运行（只报告，不阻断构建）；
 对产物目录的结构校验是阻断性的。
