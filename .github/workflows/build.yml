@@ -139,6 +139,10 @@ jobs:
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" --target "$GITHUB_SHA" \
               --title "Animeko ${version} (Flatpak)" --notes-file "$notes"
+          else
+            # Keep the "built from" note current when an existing release is
+            # refreshed rather than created.
+            gh release edit "$tag" --notes-file "$notes"
           fi
           gh release upload "$tag" "$asset" --clobber
           echo "published: $(gh release view "$tag" --json url --jq .url)"
