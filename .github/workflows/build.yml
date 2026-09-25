@@ -12,7 +12,7 @@ permissions:
 jobs:
   flatpak:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -65,13 +65,21 @@ jobs:
       # The runner has no display. Xvfb is enough for the app to log its
       # subsystem status, which catches a broken bundle. Best effort: this step
       # reports but does not fail the build.
+      #
+      # Every layer here is hard-bounded on purpose. Killing `flatpak run` leaves
+      # the sandbox's own processes alive, and dbus-run-session then waits for
+      # its bus to drain, so without a kill-based timeout the step never returns
+      # and the release step behind it never runs.
       - name: Smoke test under Xvfb
         continue-on-error: true
+        timeout-minutes: 6
         run: |
           sudo apt-get install -y --no-install-recommends xvfb dbus-x11
           log="$RUNNER_TEMP/ani.log"
-          dbus-run-session -- xvfb-run -a --server-args='-screen 0 1280x800x24' \
-            timeout 120 flatpak run me.him188.ani >"$log" 2>&1 || true
+          timeout --signal=KILL 180 dbus-run-session -- xvfb-run -a \
+            --server-args='-screen 0 1280x800x24' \
+            flatpak run me.him188.ani >"$log" 2>&1 || true
+          flatpak kill me.him188.ani 2>/dev/null || true
           echo "--- last 40 lines ---"
           tail -40 "$log"
           grep -q 'Ani started' "$log"
