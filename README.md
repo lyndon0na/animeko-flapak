@@ -5,6 +5,8 @@ runs on the GNOME runtime.
 
 **English** | [简体中文](README.zh-CN.md)
 
+[![build](https://github.com/lyndon0na/animeko-flapak/actions/workflows/build.yml/badge.svg)](https://github.com/lyndon0na/animeko-flapak/actions/workflows/build.yml)
+
 ## Why the AppImage does not start as shipped
 
 The AppImage is a jpackage app-image (JetBrains Runtime 21). Its native launcher
@@ -194,6 +196,24 @@ flatpak install --user animeko-6.1.0.flatpak
 The bundle is ~280 MB, over GitHub's 100 MB per-file limit, so publish it as a
 release asset rather than committing it.
 
+## CI
+
+`.github/workflows/build.yml` builds the Flatpak on GitHub Actions:
+
+* a push to `main` and a manual dispatch build, verify the packaged tree and
+  upload the bundle as a workflow artifact;
+* a `v*` tag additionally creates a GitHub release and attaches the bundle to
+  it, which is how the ~280 MB bundle is distributed.
+
+```sh
+git tag v6.1.0
+git push origin v6.1.0
+```
+
+The runner is headless, so the GUI smoke test runs under Xvfb as a best-effort
+step that reports without failing the build. The structural check of the
+packaged tree is a normal, gating step.
+
 ## Sandbox notes
 
 * **X11 is required.** JCEF hardcodes `--ozone-platform=x11` because Chromium's
@@ -258,6 +278,7 @@ release asset rather than committing it.
 | `me.him188.ani.metainfo.xml` | AppStream metadata |
 | `icons/me.him188.ani-*.png` | shipped icons; 512×512 is the AppImage's `icon.png` verbatim, 128/256 are downscales |
 | `icons/appimage-icon.png` | that source file, kept so the derivation is reproducible |
+| `.github/workflows/build.yml` | CI: builds, verifies and publishes the bundle |
 | `README.zh-CN.md` | this document in Simplified Chinese |
 | `LICENSE.txt` | upstream's AGPL-3.0 license |
 

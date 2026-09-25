@@ -1,0 +1,126 @@
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  flatpak:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install flatpak and flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder
+
+      - name: Install the GNOME runtime and SDK from Flathub
+        run: |
+          flatpak remote-add --if-not-exists --user flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.gnome.Platform//49 org.gnome.Sdk//49
+
+      # rofiles-fuse buys nothing here: the module only unpacks and copies
+      # prebuilt files, it never compiles anything.
+      - name: Build and install
+        run: |
+          flatpak-builder --user --install --force-clean --disable-rofiles-fuse \
+            --repo=repo build me.him188.ani.yaml
+
+      - name: Verify the packaged tree
+        run: |
+          set -euo pipefail
+          app="$HOME/.local/share/flatpak/app/me.him188.ani/current/active/files"
+          cfg="$app/ani/usr/lib/app/Ani.cfg"
+          jar="$app/ani/usr/lib/app/animeko-bootstrap.jar"
+          manifest="$RUNNER_TEMP/manifest.txt"
+
+          test -x "$app/ani/usr/bin/Ani"
+          test -f "$jar"
+
+          # The launcher must see exactly one classpath entry pointing at the
+          # bootstrap jar, otherwise it truncates the classpath and dies in
+          # setenv() before the JVM starts.
+          test "$(grep -c '^app.classpath=' "$cfg")" = "1"
+          grep -q '^app.classpath=\$APPDIR/animeko-bootstrap.jar$' "$cfg"
+
+          unzip -p "$jar" META-INF/MANIFEST.MF > "$manifest"
+          grep -q '^Class-Path: ' "$manifest"
+          grep -q 'desktop-6.1.0.jar' "$manifest"
+          grep -q '^Main-Class: me.him188.ani.app.desktop.AniDesktop' "$manifest"
+
+          for size in 128 256 512; do
+            test -f "$app/share/icons/hicolor/${size}x${size}/apps/me.him188.ani.png"
+          done
+          echo "packaged tree ok"
+
+      # The runner has no display. Xvfb is enough for the app to log its
+      # subsystem status, which catches a broken bundle. Best effort: this step
+      # reports but does not fail the build.
+      - name: Smoke test under Xvfb
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb dbus-x11
+          log="$RUNNER_TEMP/ani.log"
+          dbus-run-session -- xvfb-run -a --server-args='-screen 0 1280x800x24' \
+            timeout 120 flatpak run me.him188.ani >"$log" 2>&1 || true
+          echo "--- last 40 lines ---"
+          tail -40 "$log"
+          grep -q 'Ani started' "$log"
+          grep -q 'mediampv is loaded' "$log"
+          grep -q 'JCEF is initialized' "$log"
+
+      - name: Export the bundle
+        id: bundle
+        run: |
+          set -euo pipefail
+          version="$(grep -oE 'releases/download/v[0-9.]+' me.him188.ani.yaml | head -1 | sed 's|.*/v||')"
+          name="animeko-${version}-x86_64.flatpak"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          flatpak build-bundle repo "$name" me.him188.ani
+          ls -l "$name"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.bundle.outputs.name }}
+          path: ${{ steps.bundle.outputs.name }}
+          if-no-files-found: error
+
+      - name: Create or update the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          asset="${{ steps.bundle.outputs.name }}"
+          version="${{ steps.bundle.outputs.version }}"
+          notes="$RUNNER_TEMP/release-notes.md"
+
+          {
+            echo "Animeko ${version} repackaged as a Flatpak for x86_64, built from the"
+            echo "AppImage published by [open-ani/animeko](https://github.com/open-ani/animeko)."
+            echo
+            echo "Install with:"
+            echo
+            echo '```'
+            echo "flatpak install --user ${asset}"
+            echo "flatpak run me.him188.ani"
+            echo '```'
+            echo
+            echo "Requires org.gnome.Platform 49."
+          } > "$notes"
+
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title "Animeko ${version} (Flatpak)" --notes-file "$notes"
+          fi
+          gh release upload "$tag" "$asset" --clobber

@@ -4,6 +4,8 @@
 
 [English](README.md) | **简体中文**
 
+[![build](https://github.com/lyndon0na/animeko-flapak/actions/workflows/build.yml/badge.svg)](https://github.com/lyndon0na/animeko-flapak/actions/workflows/build.yml)
+
 ## 为什么 AppImage 原样无法启动
 
 这个 AppImage 是 jpackage 生成的 app-image（JetBrains Runtime 21）。它的原生启动器会读取
@@ -177,6 +179,22 @@ flatpak install --user animeko-6.1.0.flatpak
 bundle 约 280 MB，超过 GitHub 单文件 100 MB 的限制，请作为 release 附件发布，
 不要提交进仓库。
 
+## CI
+
+`.github/workflows/build.yml` 在 GitHub Actions 上构建 Flatpak：
+
+* 推送到 `main` 或手动触发时：构建 → 校验产物目录 → 把 bundle 作为 workflow artifact 上传；
+* 推送 `v*` 标签时：额外创建 GitHub Release 并把 bundle 作为附件发布。约 280 MB 的 bundle
+  就是通过 release 附件分发的。
+
+```sh
+git tag v6.1.0
+git push origin v6.1.0
+```
+
+Runner 没有显示器，所以 GUI 冒烟测试在 Xvfb 下以尽力而为的方式运行：只报告，不会让构建失败。
+对产物目录的结构校验则是正常的阻断性步骤。
+
 ## 沙箱说明
 
 * **必须给 X11。** JCEF 硬编码了 `--ozone-platform=x11`（Chromium 的 Wayland 后端会让
@@ -236,6 +254,7 @@ bundle 约 280 MB，超过 GitHub 单文件 100 MB 的限制，请作为 release
 | `me.him188.ani.metainfo.xml` | AppStream 元数据 |
 | `icons/me.him188.ani-*.png` | 实际安装的图标；512×512 是 AppImage 自带 `icon.png` 的原文件，128/256 为其缩放 |
 | `icons/appimage-icon.png` | 该原始文件，保留以便复现图标生成过程 |
+| `.github/workflows/build.yml` | CI：构建、校验并发布 bundle |
 | `LICENSE.txt` | 上游 AGPL-3.0 许可证 |
 
 ## 许可
