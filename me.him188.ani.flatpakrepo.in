@@ -1,0 +1,13 @@
+# Same substitution as the .flatpakref, for users who would rather add the
+# remote themselves and then install by ref:
+#
+#   flatpak remote-add --user --if-not-exists animeko https://<pages>/me.him188.ani.flatpakrepo
+#   flatpak install --user animeko me.him188.ani
+[Flatpak Repo]
+Title=Animeko
+Url=@PAGES_URL@/repo
+Homepage=https://animeko.org/
+Comment=Unofficial Animeko Flatpak builds
+Description=Animeko, repackaged as a Flatpak. The application payload comes from the upstream GitHub release.
+Icon=@PAGES_URL@/icon.png
+GPGKey=@GPGKEY@

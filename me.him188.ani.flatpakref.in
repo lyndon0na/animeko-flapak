@@ -1,0 +1,19 @@
+# Template for the file CI publishes next to the repository. It is filled in
+# with the Pages URL and the base64 signing key and served as
+# me.him188.ani.flatpakref, which is the one command a user needs:
+#
+#   flatpak install --user https://<pages>/me.him188.ani.flatpakref
+#
+# After that the app has a remote, so `flatpak update` (and the desktop's
+# software centre) fetch new versions from it.
+[Flatpak Ref]
+Title=Animeko
+Name=me.him188.ani
+Branch=master
+Url=@PAGES_URL@/repo
+SuggestRemoteName=animeko
+Homepage=https://animeko.org/
+Icon=@PAGES_URL@/icon.png
+IsRuntime=false
+RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo
+GPGKey=@GPGKEY@

@@ -9,6 +9,9 @@ on:
 permissions:
   contents: write
 
+env:
+  GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+
 jobs:
   flatpak:
     runs-on: ubuntu-24.04
@@ -108,9 +111,77 @@ jobs:
           grep -q 'mediampv is loaded' "$log"
           grep -q 'JCEF is initialized' "$log"
 
-      # The bundle carries the extra-data instruction, not the AppImage, so it
-      # is a couple of hundred kilobytes instead of ~280 MB. Installing it still
-      # pulls the AppImage from the upstream release.
+      # ---------------------------------------------------------------------
+      # Publishing. Only a tag publishes: the repository is updated in place so
+      # that flatpak can generate deltas between versions, and the descriptors
+      # that users install from are regenerated from the signing key every time.
+      # ---------------------------------------------------------------------
+      - name: Import the signing key
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          if [ -z "$GPG_PRIVATE_KEY" ]; then
+            echo "::error::GPG_PRIVATE_KEY is not configured; see the publishing section of the README" >&2
+            exit 1
+          fi
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          key_id="$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr:/ { print $10; exit }')"
+          test -n "$key_id"
+          echo "GPG_KEY_ID=$key_id" >> "$GITHUB_ENV"
+          gpg --export "$key_id" > "$RUNNER_TEMP/key.gpg"
+          echo "signing with $key_id"
+
+      - name: Check out the published repository
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          url="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git"
+          if git clone --depth=1 --branch=gh-pages "$url" pages 2>/dev/null; then
+            echo "continuing the published gh-pages branch"
+          else
+            echo "creating the gh-pages branch"
+            mkdir -p pages
+            git -C pages init -q -b gh-pages
+            git -C pages remote add origin "$url"
+          fi
+          git -C pages config user.name "github-actions[bot]"
+          git -C pages config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # Everything the app needs is in the previous commit, so this stays small
+      # (tens of kilobytes). Building into the already published repository is
+      # what keeps its history, and therefore the version-to-version deltas.
+      - name: Build the signed repository
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          flatpak-builder --user --force-clean --disable-rofiles-fuse \
+            --repo=pages/repo --gpg-sign="$GPG_KEY_ID" build me.him188.ani.yaml
+          flatpak build-update-repo --gpg-sign="$GPG_KEY_ID" \
+            --generate-static-deltas --title=Animeko pages/repo
+
+      - name: Publish the descriptors and push
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          pages_url="https://${GITHUB_REPOSITORY%%/*}.github.io/${GITHUB_REPOSITORY#*/}"
+          key_b64="$(base64 -w0 "$RUNNER_TEMP/key.gpg")"
+          for name in me.him188.ani.flatpakref me.him188.ani.flatpakrepo; do
+            sed -e "s|@PAGES_URL@|$pages_url|g" -e "s|@GPGKEY@|$key_b64|g" \
+              "$name.in" > "pages/$name"
+          done
+          install -m644 icons/me.him188.ani-512.png pages/icon.png
+          git -C pages add -A
+          if git -C pages diff --cached --quiet; then
+            echo "nothing new to publish"
+          else
+            git -C pages commit -q -m "Publish ${GITHUB_REF_NAME}"
+            git -C pages push -q origin gh-pages
+            echo "published ${GITHUB_REF_NAME} to ${pages_url}"
+          fi
+
+      # On a tag the bundle is cut from the signed repository and carries the
+      # remote URL, so installing it configures the remote too and updates work
+      # through flatpak from then on.
       - name: Export the bundle
         id: bundle
         run: |
@@ -119,7 +190,14 @@ jobs:
           name="animeko-${version}-x86_64.flatpak"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "name=$name" >> "$GITHUB_OUTPUT"
-          flatpak build-bundle repo "$name" me.him188.ani
+          if [ -n "${GPG_KEY_ID:-}" ]; then
+            flatpak build-bundle \
+              --repo-url="https://${GITHUB_REPOSITORY%%/*}.github.io/${GITHUB_REPOSITORY#*/}/repo" \
+              --gpg-keys="$RUNNER_TEMP/key.gpg" \
+              pages/repo "$name" me.him188.ani
+          else
+            flatpak build-bundle repo "$name" me.him188.ani
+          fi
           ls -l "$name"
 
       - uses: actions/upload-artifact@v4
@@ -137,6 +215,7 @@ jobs:
           tag="$GITHUB_REF_NAME"
           asset="${{ steps.bundle.outputs.name }}"
           version="${{ steps.bundle.outputs.version }}"
+          pages_url="https://${GITHUB_REPOSITORY%%/*}.github.io/${GITHUB_REPOSITORY#*/}"
           notes="$RUNNER_TEMP/release-notes.md"
 
           {
@@ -148,11 +227,13 @@ jobs:
             echo "Install with:"
             echo
             echo '```'
-            echo "flatpak install --user ${asset}"
-            echo "flatpak run me.him188.ani"
+            echo "flatpak install --user ${pages_url}/me.him188.ani.flatpakref"
             echo '```'
             echo
-            echo "Installing downloads ~337 MB from GitHub. Requires org.gnome.Platform 49."
+            echo "That configures the remote as well, so later versions arrive through"
+            echo "\`flatpak update\`. Installing downloads ~337 MB from GitHub. The bundle"
+            echo "attached below is the offline alternative and needs"
+            echo "org.gnome.Platform 49."
           } > "$notes"
 
           if ! gh release view "$tag" >/dev/null 2>&1; then
