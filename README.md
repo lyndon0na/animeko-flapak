@@ -90,15 +90,24 @@ well.
 | `--socket=wayland` | Wayland support, alongside X11 for the reason above |
 | `--socket=pulseaudio` | Audio playback |
 | `--device=dri` | GPU rendering and VA-API hardware decoding |
-| `--filesystem=home` | Media cache and download directories are user-chosen paths that the app reads and writes directly |
 | `--talk-name=org.kde.StatusNotifierWatcher` | System tray |
 | `--own-name=org.kde.StatusNotifierItem-2-1` | The tray icon's own D-Bus name |
 | `--talk-name=org.freedesktop.Notifications` | Notifications |
 | `--talk-name=org.freedesktop.ScreenSaver` | Inhibit the screen saver and sleep while a video plays |
 
-`--filesystem=home` is the broadest grant here, because the cache directory can
-be anywhere. Narrow it to `xdg-videos` / `xdg-download`, or uncomment the
-`/run/media` and `/media` entries in the manifest to cache onto removable drives.
+No host filesystem access is requested. Everything the app stores by default -
+the media download folder, the media cache, the database and the logs - lives in
+`~/.var/app/me.him188.ani/`, which the sandbox always provides. Pointing the app
+at a real path therefore needs a grant too: the folder picker will happily show
+you `~/Videos`, but the app cannot read or write it until you allow it.
+
+```sh
+flatpak override --user --filesystem=xdg-videos me.him188.ani
+```
+
+Use `--filesystem=home` for the whole home directory, or do the same per app in
+Flatseal. The manifest lists the alternatives in a comment, in increasing order
+of width.
 
 ## Files
 

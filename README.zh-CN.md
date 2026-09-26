@@ -85,15 +85,21 @@ flatpak uninstall --user me.him188.ani
 | `--socket=wayland` | Wayland 支持；同时提供 X11，原因见技术说明 |
 | `--socket=pulseaudio` | 音频播放 |
 | `--device=dri` | GPU 渲染与 VA-API 硬件解码 |
-| `--filesystem=home` | 媒体缓存与下载目录是用户自选路径，应用直接按路径读写 |
 | `--talk-name=org.kde.StatusNotifierWatcher` | 系统托盘 |
 | `--own-name=org.kde.StatusNotifierItem-2-1` | 托盘图标注册自己的 D-Bus 名 |
 | `--talk-name=org.freedesktop.Notifications` | 通知 |
 | `--talk-name=org.freedesktop.ScreenSaver` | 播放时抑制熄屏与休眠 |
 
-`--filesystem=home` 是这份打包里最宽的一项权限，因为缓存目录可以选在任意位置。
-想收紧就改成 `xdg-videos` / `xdg-download`；想把缓存放到移动硬盘，取消注释
-manifest 里的 `/run/media` 与 `/media`。
+这份打包不申请任何宿主文件系统权限。应用默认写入的一切——媒体下载目录、媒体缓存、数据库、
+日志——都在 `~/.var/app/me.him188.ani/` 里，沙箱自带这块空间。因此想把缓存或下载目录指到真实
+路径时，需要另外授权：文件夹选择器会照样让你选中 `~/Videos`，但在授权之前应用读写不了它。
+
+```sh
+flatpak override --user --filesystem=xdg-videos me.him188.ani
+```
+
+要整个家目录就把 `xdg-videos` 换成 `home`，或者在 Flatseal 里按应用勾选。manifest 的注释里按
+由窄到宽列出了这些选项。
 
 ## 文件说明
 

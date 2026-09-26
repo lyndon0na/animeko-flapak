@@ -36,13 +36,18 @@ finish-args:
   - --socket=pulseaudio
   # VA-API hardware decoding for mpv/FFmpeg and GPU access for Skiko.
   - --device=dri
-  # The media cache and download folders are user-selectable paths, so the app
-  # needs real filesystem access rather than a portal file descriptor.
-  # Narrow this to e.g. xdg-videos/xdg-download if you prefer.
-  - --filesystem=home
-  # Removable media picked as a cache location. Uncomment as needed:
-  # - --filesystem=/run/media
+  # Nothing on the host filesystem is requested. Everything the app writes by
+  # default - the media download folder, the media cache, the database and the
+  # logs - lives under ~/.var/app/me.him188.ani/, which the sandbox provides on
+  # its own. A user who points the app at a real path has to grant that path,
+  # e.g. `flatpak override --user --filesystem=xdg-download me.him188.ani`, or
+  # the same per-app in Flatseal. Should this package want to ship a broader
+  # default, the candidates are, in increasing order of width:
+  # - --filesystem=xdg-download
+  # - --filesystem=xdg-videos
+  # - --filesystem=/run/media   (removable drives)
   # - --filesystem=/media
+  # - --filesystem=home
   # System tray and notifications. Compose's tray helper registers the bus name
   # org.kde.StatusNotifierItem-<pid>-1 over sd-bus directly. Flatpak cannot
   # express a wildcard for that hyphenated name, and the sandbox always gives
