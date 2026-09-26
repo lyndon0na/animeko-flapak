@@ -31,16 +31,6 @@ This adds the remote as well, so later versions arrive through `flatpak update`
 (or through the desktop's software centre). Installing downloads the ~337 MB
 AppImage from GitHub, which is where the application itself comes from.
 
-### From the offline bundle
-
-Every release also carries a bundle. It is a couple of hundred kilobytes and
-names the same remote, so installing it sets up updates too:
-
-```sh
-curl -LO https://github.com/lyndon0na/animeko-flapak/releases/latest/download/animeko-6.1.0-x86_64.flatpak
-flatpak install --user ./animeko-6.1.0-x86_64.flatpak
-```
-
 ### Build locally
 
 ```sh
@@ -63,14 +53,12 @@ the runtime and the SDK. The AppImage is pulled on the machine where the app is
 installed, from the upstream release URL, checked against the sha256 recorded in
 the manifest.
 
-### Export a bundle to hand to someone else
+### Why there is no bundle
 
-```sh
-flatpak build-bundle repo animeko-6.1.0-x86_64.flatpak me.him188.ani
-```
-
-The bundle stays around a hundred kilobytes, because the app is not in it:
-whoever installs it downloads the AppImage from GitHub.
+A bundle cannot carry the extra-data record: it lives in the commit's detached
+metadata, which `flatpak build-bundle` does not include, so installing one fails
+with `Extra data missing in detached metadata`. The repository published over
+GitHub Pages is therefore the only install path.
 
 ## Run
 

@@ -246,6 +246,17 @@ F: Running /app/bin/apply_extra
 会重新下载并重新执行 `apply_extra`。所以"只改了桌面文件"的版本也会让每个用户重下 337 MB——
 发版要攒着一起发。
 
+### 不能再用 bundle
+
+以前挂在 Release 上的 bundle 现在已经做不出来了：extra-data 的记录在 commit 的 detached
+metadata 里，而 `flatpak build-bundle` 不会把它写进 bundle，所以安装时报
+
+```
+错误：安装捆绑包 me.him188.ani 失败：分离的元数据中缺少额外的数据
+```
+
+这是拿本 manifest 构建出的签名仓库实测的结果。仓库是唯一的安装入口。
+
 ### 密钥
 
 签名密钥只需要一把（`GPG_PRIVATE_KEY` secret），公钥由 CI 从私钥当场导出。密钥丢失等于所有用户都要重新

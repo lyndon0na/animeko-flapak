@@ -30,16 +30,7 @@ flatpak install --user https://lyndon0na.github.io/animeko-flapak/me.him188.ani.
 这一条命令会同时把 remote 配好，之后的版本交给 `flatpak update`（或桌面软件中心）。安装时会从
 GitHub 下载约 337 MB 的 AppImage——应用本体就来自那里。
 
-### 方式二：离线 bundle
-
-每个 Release 也会附一个 bundle，只有几百 KB，里面写着同一个 remote，所以用它安装同样能获得更新：
-
-```sh
-curl -LO https://github.com/lyndon0na/animeko-flapak/releases/latest/download/animeko-6.1.0-x86_64.flatpak
-flatpak install --user ./animeko-6.1.0-x86_64.flatpak
-```
-
-### 方式三：本地构建
+### 方式二：本地构建
 
 ```sh
 # 安装依赖
@@ -59,15 +50,11 @@ flatpak-builder --user --install --force-clean --repo=repo build me.him188.ani.y
 构建阶段不需要下载任何东西：AppImage 是 extra-data 源，构建只用 runtime 和 SDK。安装时才从
 上游 release 的 URL 拉取，并按 manifest 里记录的 sha256 校验。
 
-### 方式四：导出 bundle 给别人
+### 为什么没有 bundle
 
-```sh
-flatpak build-bundle --repo-url=https://lyndon0na.github.io/animeko-flapak/repo \
-  repo animeko-6.1.0-x86_64.flatpak me.him188.ani
-```
-
-bundle 只有一百多 KB，因为应用本体不在里面：安装它的人仍然会从 GitHub 下载 AppImage。
-带上 `--repo-url` 后，装它的人也会自动获得 remote 和后续更新。
+bundle 装不下 extra-data 的记录：那条记录在 commit 的 detached metadata 里，而
+`flatpak build-bundle` 不会把它打进 bundle，于是安装时报
+`Extra data missing in detached metadata`。所以发布在 GitHub Pages 上的仓库是唯一的安装入口。
 
 ## 运行
 

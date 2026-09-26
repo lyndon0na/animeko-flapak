@@ -280,6 +280,21 @@ url/sha256/size), flatpak downloads the file again and re-runs `apply_extra`. A
 release that only changes the desktop file therefore still costs every user
 337 MB - batch changes instead of publishing often.
 
+### No bundles
+
+The bundle that used to be attached to releases cannot be built for this package
+any more: an extra-data record lives in the commit's detached metadata, and
+`flatpak build-bundle` does not put it into the bundle, so installing one fails
+with
+
+```
+错误：安装捆绑包 me.him188.ani 失败：分离的元数据中缺少额外的数据
+Error: Failed to install bundle me.him188.ani: Extra data missing in detached metadata
+```
+
+Measured against a signed repository built from this manifest. The repository is
+the only install path.
+
 ### The key
 
 One signing key (`GPG_PRIVATE_KEY`) is enough; CI exports the public half from it

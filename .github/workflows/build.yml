@@ -179,33 +179,10 @@ jobs:
             echo "published ${GITHUB_REF_NAME} to ${pages_url}"
           fi
 
-      # On a tag the bundle is cut from the signed repository and carries the
-      # remote URL, so installing it configures the remote too and updates work
-      # through flatpak from then on.
-      - name: Export the bundle
-        id: bundle
-        run: |
-          set -euo pipefail
-          version="$(grep -oE 'releases/download/v[0-9.]+' me.him188.ani.yaml | head -1 | sed 's|.*/v||')"
-          name="animeko-${version}-x86_64.flatpak"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-          if [ -n "${GPG_KEY_ID:-}" ]; then
-            flatpak build-bundle \
-              --repo-url="https://${GITHUB_REPOSITORY%%/*}.github.io/${GITHUB_REPOSITORY#*/}/repo" \
-              --gpg-keys="$RUNNER_TEMP/key.gpg" \
-              pages/repo "$name" me.him188.ani
-          else
-            flatpak build-bundle repo "$name" me.him188.ani
-          fi
-          ls -l "$name"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.bundle.outputs.name }}
-          path: ${{ steps.bundle.outputs.name }}
-          if-no-files-found: error
-
+      # No bundle is published: a bundle does not carry the detached metadata
+      # that holds an extra-data record, so flatpak refuses to install one
+      # ("extra data missing in detached metadata"). The flatpakref, and the
+      # repository behind it, are the only install path.
       - name: Create or update the release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -213,8 +190,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="$GITHUB_REF_NAME"
-          asset="${{ steps.bundle.outputs.name }}"
-          version="${{ steps.bundle.outputs.version }}"
+          version="$(grep -oE 'releases/download/v[0-9.]+' me.him188.ani.yaml | head -1 | sed 's|.*/v||')"
           pages_url="https://${GITHUB_REPOSITORY%%/*}.github.io/${GITHUB_REPOSITORY#*/}"
           notes="$RUNNER_TEMP/release-notes.md"
 
@@ -231,12 +207,12 @@ jobs:
             echo '```'
             echo
             echo "That configures the remote as well, so later versions arrive through"
-            echo "\`flatpak update\`. Installing downloads ~337 MB from GitHub. The bundle"
-            echo "attached below is the offline alternative and needs"
+            echo "\`flatpak update\`. Installing downloads ~337 MB from GitHub and needs"
             echo "org.gnome.Platform 49."
           } > "$notes"
 
-          if ! gh release view "$tag" >/dev/null 2>&1; then
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --notes-file "$notes"
+          else
             gh release create "$tag" --title "Animeko ${version} (Flatpak)" --notes-file "$notes"
           fi
-          gh release upload "$tag" "$asset" --clobber
