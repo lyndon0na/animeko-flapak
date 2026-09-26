@@ -111,6 +111,7 @@ flatpak override --user --filesystem=xdg-videos me.him188.ani
 | `me.him188.ani.flatpakref.in` | 一行命令安装用的模板，由 CI 填充后发布 |
 | `me.him188.ani.flatpakrepo.in` | 同上，给手动添加 remote 的人用 |
 | `.github/workflows/build.yml` | CI：构建、校验、发布仓库与 Release |
+| `.github/workflows/upstream.yml` | 每天检查上游，需要时开升级 PR |
 | `docs/` | [打包技术说明](docs/packaging-notes.zh-CN.md) |
 | `LICENSE.txt` | AGPL-3.0 许可证 |
 
@@ -118,8 +119,10 @@ flatpak override --user --filesystem=xdg-videos me.him188.ani
 
 `.github/workflows/build.yml`：
 
-* 推送到 `main` 或手动触发：构建 → 安装并校验部署后的目录树 → 上传 bundle 作为 workflow artifact；
-* 推送 `v*` 标签：额外对构建签名、更新已发布的仓库，并创建 GitHub Release 附上 bundle。
+* 推送到 `main` 或手动触发：构建、安装并校验部署后的目录树；
+* 推送 `v*` 标签：额外对构建签名、更新已发布的仓库，并创建 GitHub Release；
+* `.github/workflows/upstream.yml` 每天跑一次：上游 open-ani/animeko 发了新版本时，
+  它会开一个 PR 把 manifest 指向新版本。合并这个 PR **不会**发布——发布仍然靠打标签。
 
 Runner 没有显示器，所以 GUI 冒烟测试在 Xvfb 下尽力而为地运行（只报告，不阻断构建）；
 对产物目录的结构校验是阻断性的。
@@ -132,6 +135,8 @@ Runner 没有显示器，所以 GUI 冒烟测试在 Xvfb 下尽力而为地运�
    公钥，用它签 commit 和仓库 summary，并把公钥写进两个描述文件。
 2. **GitHub Pages** 指向 `gh-pages` 分支（Settings → Pages → Source）。每次打标签，CI 会把
    OSTree 仓库、`me.him188.ani.flatpakref`、`me.him188.ani.flatpakrepo` 和一个图标推到该分支。
+3. **允许 Actions 创建 PR**（Settings → Actions → General → Workflow permissions），
+   否则每天的 upstream 检查开不了升级 PR。
 
 发新版时改 manifest 的 `url`、`sha256`、`size`（顺手更新 metainfo 里的 `<release>`），提交、打标签。
 

@@ -1,0 +1,153 @@
+name: upstream
+
+# Watches open-ani/animeko and proposes the version bump as a pull request.
+# Merging is the review, and the tag is still what publishes:
+#
+#   git tag v6.2.0 && git push origin v6.2.0
+#
+# GitHub pauses scheduled workflows after 60 days of repository inactivity, so
+# this needs the occasional push to keep running.
+
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Look for a newer upstream release
+        id: release
+        run: |
+          set -euo pipefail
+          release="$(curl -fsSL https://api.github.com/repos/open-ani/animeko/releases/latest)"
+          tag="$(jq -r '.tag_name' <<<"$release")"
+          version="${tag#v}"
+          current="$(sed -n 's|.*releases/download/v\([0-9][0-9.]*\)/.*|\1|p' me.him188.ani.yaml | head -1)"
+          test -n "$current"
+
+          # The Linux x86_64 AppImage, whichever name upstream gives it.
+          asset="$(jq -r --arg re '^ani-.*-linux-x86_64\.appimage$' \
+            '.assets[] | select(.name | test($re)) | "\(.browser_download_url) \(.size)"' <<<"$release")"
+          if [ -z "$asset" ]; then
+            echo "::error::${tag} carries no linux-x86_64 AppImage" >&2
+            exit 1
+          fi
+          url="${asset% *}"
+          size="${asset##* }"
+
+          echo "upstream has ${version}, this repository ships ${current}"
+          if [ "$version" = "$current" ]; then
+            echo "already shipping ${current}"
+            exit 0
+          fi
+          if [ "$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -1)" != "$version" ]; then
+            echo "upstream ${version} is older than the ${current} we ship"
+            exit 0
+          fi
+          {
+            echo "bump=true"
+            echo "version=$version"
+            echo "url=$url"
+            echo "size=$size"
+          } >> "$GITHUB_OUTPUT"
+
+      # extra-data needs a sha256, and upstream only publishes a .sha1, so the
+      # file has to come down once. That is also the only time this workflow
+      # downloads 337 MB.
+      - name: Download it and compute the sha256
+        if: steps.release.outputs.bump == 'true'
+        env:
+          ASSET_URL: ${{ steps.release.outputs.url }}
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/ani.appimage" "$ASSET_URL"
+          test "$(stat -c %s "$RUNNER_TEMP/ani.appimage")" = "${{ steps.release.outputs.size }}"
+          sha256sum "$RUNNER_TEMP/ani.appimage" | cut -d' ' -f1 > "$RUNNER_TEMP/sha256"
+          echo "sha256 $(cat "$RUNNER_TEMP/sha256")"
+
+      - name: Update everything that names the version
+        if: steps.release.outputs.bump == 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          ASSET_URL: ${{ steps.release.outputs.url }}
+          ASSET_SIZE: ${{ steps.release.outputs.size }}
+        run: |
+          set -euo pipefail
+          sha="$(cat "$RUNNER_TEMP/sha256")"
+          today="$(date -u +%F)"
+
+          sed -i -E "s#^        url: .*#        url: ${ASSET_URL}#" me.him188.ani.yaml
+          sed -i -E "s#^        sha256: [0-9a-f]{64}#        sha256: ${sha}#" me.him188.ani.yaml
+          sed -i -E "s#^        size: [0-9]+#        size: ${ASSET_SIZE}#" me.him188.ani.yaml
+          sed -i -E "s#open-ani/animeko v[0-9.]+, [0-9]+ bytes#open-ani/animeko v${VERSION}, ${ASSET_SIZE} bytes#" \
+            me.him188.ani.yaml
+
+          sed -i "0,/<releases>/s#<releases>#<releases>\n    <release version=\"${VERSION}\" date=\"${today}\">\n      <description>\n        <p>Packaged from the ani-${VERSION} release.</p>\n      </description>\n    </release>#" \
+            me.him188.ani.metainfo.xml
+
+          for readme in README.md README.zh-CN.md; do
+            sed -i -E "s#\| Version \| [0-9.]+ *\|#| Version | ${VERSION} |#" "$readme"
+            sed -i -E "s#\| 版本 \| [0-9.]+ *\|#| 版本 | ${VERSION} |#" "$readme"
+            sed -i -E "s#ani-[0-9.]+-linux-x86_64\.appimage#ani-${VERSION}-linux-x86_64.appimage#g" "$readme"
+            sed -i -E "s#git tag v[0-9.]+#git tag v${VERSION}#" "$readme"
+            sed -i -E "s#git push origin v[0-9.]+#git push origin v${VERSION}#" "$readme"
+          done
+
+          git --no-pager diff --stat
+
+      - name: Open the pull request
+        if: steps.release.outputs.bump == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.release.outputs.version }}
+          ASSET_URL: ${{ steps.release.outputs.url }}
+          ASSET_SIZE: ${{ steps.release.outputs.size }}
+        run: |
+          set -euo pipefail
+          sha="$(cat "$RUNNER_TEMP/sha256")"
+          branch="bump-${VERSION}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git commit -am "Bump to Animeko ${VERSION}"
+          git push -f origin "$branch"
+
+          if [ "$(gh pr list --head "$branch" --json number --jq 'length')" != "0" ]; then
+            echo "a pull request for ${branch} is already open"
+            exit 0
+          fi
+
+          body="$RUNNER_TEMP/pr-body.md"
+          {
+            echo "Upstream published [Animeko ${VERSION}](https://github.com/open-ani/animeko/releases/tag/v${VERSION})."
+            echo
+            echo "The manifest now points at that release:"
+            echo
+            echo '```'
+            echo "url:    ${ASSET_URL}"
+            echo "sha256: ${sha}"
+            echo "size:   ${ASSET_SIZE} bytes"
+            echo '```'
+            echo
+            echo "Merging this pull request does not publish anything. The release is the tag:"
+            echo
+            echo '```sh'
+            echo "git tag v${VERSION} && git push origin v${VERSION}"
+            echo '```'
+            echo
+            echo "Keep in mind that publishing costs every user a full ~337 MB download, so"
+            echo "land any other pending changes in the same tag."
+          } > "$body"
+
+          gh pr create --base main --head "$branch" \
+            --title "Bump to Animeko ${VERSION}" --body-file "$body"

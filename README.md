@@ -119,6 +119,7 @@ of width.
 | `me.him188.ani.flatpakref.in` | template for the one-line install, filled in and published by CI |
 | `me.him188.ani.flatpakrepo.in` | same, for adding the remote by hand |
 | `.github/workflows/build.yml` | CI: builds, verifies, publishes the repository and the release |
+| `.github/workflows/upstream.yml` | daily upstream check, opens a bump pull request |
 | `docs/` | [Packaging notes](docs/packaging-notes.md) |
 | `LICENSE.txt` | AGPL-3.0 license |
 
@@ -126,10 +127,13 @@ of width.
 
 `.github/workflows/build.yml`:
 
-* a push to `main` or a manual dispatch builds, installs, verifies the deployed
-  tree and uploads the bundle as a workflow artifact;
+* a push to `main` or a manual dispatch builds, installs and verifies the
+  deployed tree;
 * a `v*` tag additionally signs the build, updates the published repository and
-  creates a GitHub release with the bundle attached.
+  creates a GitHub release;
+* `.github/workflows/upstream.yml` runs daily: when open-ani/animeko publishes a
+  newer release it opens a pull request that points the manifest at it. Merging
+  that pull request does not publish anything - the tag does.
 
 The runner is headless, so the GUI smoke test runs under Xvfb as a best-effort
 step that reports without failing the build. The structural checks are gating.
@@ -150,6 +154,9 @@ A tag publishes the repository, and that needs two things set up once:
 2. **GitHub Pages** serving the `gh-pages` branch (Settings → Pages → Source).
    Every tag pushes the OSTree repository, `me.him188.ani.flatpakref`,
    `me.him188.ani.flatpakrepo` and an icon to that branch.
+3. **Pull requests from Actions** allowed (Settings → Actions → General →
+   Workflow permissions), otherwise the daily upstream check cannot open its
+   bump pull request.
 
 To release a new version, edit `url`, `sha256` and `size` in the manifest (and
 the `<release>` entry in the metainfo), commit, and tag.
