@@ -35,24 +35,28 @@ sudo rm -f /var/lib/systemd/coredump/core.jcef_helper.*
 真正的修复只能来自上游：换用实现了该开关的 JBR/CEF，或者 CEF 提供一个允许宿主传入组件更新
 开关的口子。
 
-## 休眠抑制需要显式授予 D-Bus 权限
+## 休眠抑制需要显式授予一个 D-Bus 名
 
 播放视频时，Animeko 通过两条路抑制休眠与熄屏：调用 `systemd-inhibit` 命令（logind，系统总线），
 以及调用 `org.freedesktop.ScreenSaver` 这个 D-Bus 接口。前者来自
 [#2773](https://github.com/open-ani/animeko/pull/2773)，后者来自
 [#2925](https://github.com/open-ani/animeko/pull/2925)。
 
-在沙箱里这两条路默认都失败：系统总线根本没有挂载（`/run/dbus/system_bus_socket` 不存在），
-而会话总线代理又把 `org.freedesktop.ScreenSaver` 当作未授权的名字拒绝掉，于是 `Inhibit`
-静默失败，播放时机器照样休眠。另外 GNOME runtime 里**没有 `systemd-inhibit` 这个命令**，
-所以即便给了权限，那条路在这里也走不通。
+这里只有第二条路能走通。GNOME runtime 里没有 `systemd-inhibit` 命令，而应用会先判断该命令
+是否在 `PATH` 上，不在就直接跳过，所以那条路永远不会执行。D-Bus 那条路失败的原因不同：
+会话总线代理把 `org.freedesktop.ScreenSaver` 当作未授权的名字拒绝掉，于是 `Inhibit` 静默失败，
+播放时机器照样休眠。
 
-把这两个名字授出去即可修好：
+把这一个名字授出去即可修好：
 
 ```yaml
 - --talk-name=org.freedesktop.ScreenSaver
-- --system-talk-name=org.freedesktop.login1
 ```
+
+`--system-talk-name=org.freedesktop.login1` **故意不授**。它确实是 `systemd-inhibit` 那条路
+需要的，授了之后 `login1.Manager.Inhibit` 也的确能用，但既然那条路根本跑不起来，授它只会扩大
+沙箱：它会是本包唯一申请的系统总线访问，把 logind（`PowerOff`、`Reboot`、`Suspend` 等接口）
+白白暴露出去。
 
 在 Plasma 6 上已通过监视会话总线上的调用、以及电源管理面板列出的抑制者确认：
 

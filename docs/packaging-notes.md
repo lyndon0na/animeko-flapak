@@ -43,7 +43,7 @@ sudo rm -f /var/lib/systemd/coredump/core.jcef_helper.*
 A real fix has to come from upstream: a JBR/CEF that implements the flag, or a
 component-updater switch CEF lets the host pass in.
 
-## Sleep inhibition needs explicit D-Bus grants
+## Sleep inhibition needs an explicit D-Bus grant
 
 While a video plays, Animeko inhibits sleep and the screen saver through two
 paths: it shells out to `systemd-inhibit` (logind, system bus) and it calls the
@@ -51,19 +51,23 @@ paths: it shells out to `systemd-inhibit` (logind, system bus) and it calls the
 [#2773](https://github.com/open-ani/animeko/pull/2773), the second with
 [#2925](https://github.com/open-ani/animeko/pull/2925).
 
-Both fail inside the sandbox by default. The system bus is not even mounted
-(`/run/dbus/system_bus_socket` does not exist), and the session bus proxy rejects
-`org.freedesktop.ScreenSaver` as an ungranted name, so `Inhibit` fails silently
-and the machine suspends mid-playback. The GNOME runtime also ships no
-`systemd-inhibit` binary, so that path cannot work here regardless of
-permissions.
+Only the second can work here. The GNOME runtime ships no `systemd-inhibit`
+binary and the app gates that path on the binary being on `PATH`, so it never
+runs. The D-Bus path was failing for a different reason: the session bus proxy
+treats `org.freedesktop.ScreenSaver` as an ungranted name, so `Inhibit` failed
+silently and the machine suspended mid-playback.
 
-Granting the two names fixes it:
+Granting that one name fixes it:
 
 ```yaml
 - --talk-name=org.freedesktop.ScreenSaver
-- --system-talk-name=org.freedesktop.login1
 ```
+
+`--system-talk-name=org.freedesktop.login1` is deliberately **not** granted. It
+is what the `systemd-inhibit` path would need, and granting it does make
+`login1.Manager.Inhibit` work, but since that path cannot run it would only widen
+the sandbox: it would be the sole system bus access this package requests,
+exposing logind (`PowerOff`, `Reboot`, `Suspend`, ...) for nothing.
 
 Verified on Plasma 6 by watching the call on the session bus and by the power
 management panel listing the inhibitor:

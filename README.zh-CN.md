@@ -88,7 +88,6 @@ flatpak uninstall --user me.him188.ani
 | `--own-name=org.kde.StatusNotifierItem-2-1` | 托盘图标注册自己的 D-Bus 名 |
 | `--talk-name=org.freedesktop.Notifications` | 通知 |
 | `--talk-name=org.freedesktop.ScreenSaver` | 播放时抑制熄屏与休眠 |
-| `--system-talk-name=org.freedesktop.login1` | logind，供 `systemd-inhibit` 那条路使用 |
 
 `--filesystem=home` 是这份打包里最宽的一项权限，因为缓存目录可以选在任意位置。
 想收紧就改成 `xdg-videos` / `xdg-download`；想把缓存放到移动硬盘，取消注释
