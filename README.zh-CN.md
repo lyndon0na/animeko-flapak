@@ -17,7 +17,7 @@
 | 架构 | x86_64 |
 | 上游源码 | https://github.com/open-ani/animeko |
 | 官网 | https://animeko.org/ |
-| 打包输入 | `ani-6.1.0-linux-x86_64.appimage`，构建时从上游 release 下载并校验 sha256 |
+| 应用本体 | 上游的 `ani-6.1.0-linux-x86_64.appimage`，声名为 [extra-data](https://docs.flatpak.org/en/latest/module-sources.html#extra-data) 源：flatpak 在用户机器上安装时下载并校验 sha256，再由 `apply_extra` 解包和打补丁 |
 
 ## 安装
 
@@ -29,6 +29,9 @@ CI 会把构建好的 bundle 作为 Release 附件发布：
 curl -LO https://github.com/lyndon0na/animeko-flapak/releases/latest/download/animeko-6.1.0-x86_64.flatpak
 flatpak install --user ./animeko-6.1.0-x86_64.flatpak
 ```
+
+bundle 只有几百 KB：里面是桌面元数据和一条「去哪拿应用」的说明。安装时 flatpak 会从上游
+GitHub release 下载约 337 MB 的 AppImage。
 
 ### 方式二：本地构建
 
@@ -47,8 +50,8 @@ cd animeko-flapak
 flatpak-builder --user --install --force-clean --repo=repo build me.him188.ani.yaml
 ```
 
-AppImage 由 manifest 从上游 release 的 URL 拉取（带 sha256 校验），无需预先下载。
-离线构建可把那条 source 换成注释里给出的本地 `path:` 形式。
+构建阶段不需要下载任何东西：AppImage 是 extra-data 源，构建只用 runtime 和 SDK。安装时才从
+上游 release 的 URL 拉取，并按 manifest 里记录的 sha256 校验。
 
 ### 方式三：导出 bundle 给别人
 
@@ -56,8 +59,7 @@ AppImage 由 manifest 从上游 release 的 URL 拉取（带 sha256 校验），
 flatpak build-bundle repo animeko-6.1.0-x86_64.flatpak me.him188.ani
 ```
 
-打包出来的 bundle 约 280 MB，超过 GitHub 单文件 100 MB 的限制，所以走 Release 附件分发，
-不要提交进仓库。
+bundle 只有一百多 KB，因为应用本体不在里面：安装它的人仍然会从 GitHub 下载 AppImage。
 
 ## 运行
 
@@ -98,7 +100,8 @@ manifest 里的 `/run/media` 与 `/media`。
 | 文件 | 说明 |
 |---|---|
 | `me.him188.ani.yaml` | Flatpak manifest（GNOME runtime 49） |
-| `make-bootstrap.py` | 改写 `Ani.cfg` 并生成引导 jar，详见[技术说明](docs/packaging-notes.zh-CN.md) |
+| `apply_extra` | 安装/更新时执行：解包 AppImage 并打补丁 |
+| `make-bootstrap.py` | 改写 `Ani.cfg` 并生成引导 jar，由 `apply_extra` 调用，详见[技术说明](docs/packaging-notes.zh-CN.md) |
 | `ani-wrapper` | `/app/bin/ani` 入口脚本 |
 | `me.him188.ani.desktop` | 桌面入口 |
 | `me.him188.ani.metainfo.xml` | AppStream 元数据 |
@@ -126,6 +129,9 @@ Runner 没有显示器，所以 GUI 冒烟测试在 Xvfb 下尽力而为地运�
 ## 注意事项
 
 * 这是**非官方**打包，上游不提供支持；有问题请提到本仓库。
+* 应用本体在安装或更新时从 GitHub 下载，不由本仓库分发。因此每个上游版本都是一次完整的
+  约 337 MB 下载；上游若删除了某个 release 资产，新用户会装不上，直到 manifest 里的 sha256
+  指向新的文件。
 * 应用数据存放在 `~/.var/app/me.him188.ani/`，与系统里安装的 Animeko 完全隔离。
 * App ID 沿用上游自己的 `me.him188.ani`，依据见[技术说明](docs/packaging-notes.zh-CN.md)。
 * CEF 在组件更新器运行时会让 unzip 工具进程崩溃，KDE 因此每次弹一个崩溃窗口。

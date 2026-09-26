@@ -28,23 +28,36 @@ jobs:
             https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.gnome.Platform//49 org.gnome.Sdk//49
 
-      # rofiles-fuse buys nothing here: the module only unpacks and copies
-      # prebuilt files, it never compiles anything.
+      # The AppImage is an extra-data source: flatpak-builder only records it in
+      # the app metadata, and flatpak downloads it from the upstream release at
+      # install time. So this build stays small, and installing it is the first
+      # point in the pipeline where the app's files exist at all (~337 MB, from
+      # GitHub, verified against the sha256 in the manifest).
+      #
+      # rofiles-fuse buys nothing here: the module only installs small files, it
+      # never compiles anything.
       - name: Build and install
         run: |
           flatpak-builder --user --install --force-clean --disable-rofiles-fuse \
             --repo=repo build me.him188.ani.yaml
 
-      - name: Verify the packaged tree
+      - name: Verify the installed app
         run: |
           set -euo pipefail
-          app="$HOME/.local/share/flatpak/app/me.him188.ani/current/active/files"
-          cfg="$app/ani/usr/lib/app/Ani.cfg"
-          jar="$app/ani/usr/lib/app/animeko-bootstrap.jar"
+          app="$(flatpak info --user --show-location me.him188.ani)/files"
+          cfg="$app/extra/ani/usr/lib/app/Ani.cfg"
+          jar="$app/extra/ani/usr/lib/app/animeko-bootstrap.jar"
           manifest="$RUNNER_TEMP/manifest.txt"
 
-          test -x "$app/ani/usr/bin/Ani"
+          # Everything shipped by this repository.
+          test -x "$app/bin/ani"
+          test -x "$app/bin/apply_extra"
+          test -f "$app/libexec/make-bootstrap.py"
+
+          # Everything apply_extra produced at install time.
+          test -x "$app/extra/ani/usr/bin/Ani"
           test -f "$jar"
+          test ! -e "$app/extra/ani.appimage"
 
           # The launcher must see exactly one classpath entry pointing at the
           # bootstrap jar, otherwise it truncates the classpath and dies in
@@ -60,11 +73,20 @@ jobs:
           for size in 128 256 512; do
             test -f "$app/share/icons/hicolor/${size}x${size}/apps/me.him188.ani.png"
           done
-          echo "packaged tree ok"
+
+          # The commit must carry the extra-data instruction, otherwise flatpak
+          # would have installed an app with no payload in it.
+          flatpak info --user -m me.him188.ani > "$RUNNER_TEMP/metadata.txt"
+          sed -n '/^\[Extra Data\]/,/^\[/p' "$RUNNER_TEMP/metadata.txt"
+          grep -q '^checksum=abeeab01daf4a08ab1cd7c4d9c6999b1741a577d93ad7e2ef28b80ea12296aa7$' \
+            "$RUNNER_TEMP/metadata.txt"
+          grep -q '^size=336849400$' "$RUNNER_TEMP/metadata.txt"
+          echo "installed app ok"
 
       # The runner has no display. Xvfb is enough for the app to log its
-      # subsystem status, which catches a broken bundle. Best effort: this step
-      # reports but does not fail the build.
+      # subsystem status, which now also proves that what apply_extra produced
+      # at install time actually launches. Best effort: this step reports but
+      # does not fail the build.
       #
       # Every layer here is hard-bounded on purpose. Killing `flatpak run` leaves
       # the sandbox's own processes alive, and dbus-run-session then waits for
@@ -86,6 +108,9 @@ jobs:
           grep -q 'mediampv is loaded' "$log"
           grep -q 'JCEF is initialized' "$log"
 
+      # The bundle carries the extra-data instruction, not the AppImage, so it
+      # is a couple of hundred kilobytes instead of ~280 MB. Installing it still
+      # pulls the AppImage from the upstream release.
       - name: Export the bundle
         id: bundle
         run: |
@@ -115,8 +140,10 @@ jobs:
           notes="$RUNNER_TEMP/release-notes.md"
 
           {
-            echo "Animeko ${version} repackaged as a Flatpak for x86_64, built from the"
-            echo "AppImage published by [open-ani/animeko](https://github.com/open-ani/animeko)."
+            echo "Animeko ${version} repackaged as a Flatpak for x86_64. The app itself"
+            echo "is downloaded from the [upstream release](https://github.com/open-ani/animeko/releases/tag/v${version})"
+            echo "by flatpak, at install and at every update, and checked against the"
+            echo "sha256 recorded in the manifest."
             echo
             echo "Install with:"
             echo
@@ -125,7 +152,7 @@ jobs:
             echo "flatpak run me.him188.ani"
             echo '```'
             echo
-            echo "Requires org.gnome.Platform 49."
+            echo "Installing downloads ~337 MB from GitHub. Requires org.gnome.Platform 49."
           } > "$notes"
 
           if ! gh release view "$tag" >/dev/null 2>&1; then

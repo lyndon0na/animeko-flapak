@@ -164,6 +164,88 @@ unpacks three runtime jars (`mediamp-mpv-runtime-linux-x64`,
 `mediamp-ffmpeg-runtime-linux-x64`, `anitorrent-native-desktop-*-linux-x64`) into
 `native/` and deletes the jars themselves, without updating `Ani.cfg` to match.
 
+## The AppImage arrives at install time
+
+The manifest declares the AppImage as an `extra-data` source instead of a build
+input:
+
+```yaml
+- type: extra-data
+  filename: ani.appimage
+  url: https://github.com/open-ani/animeko/releases/download/v6.1.0/ani-6.1.0-linux-x86_64.appimage
+  sha256: abeeab01daf4a08ab1cd7c4d9c6999b1741a577d93ad7e2ef28b80ea12296aa7
+  size: 336849400
+```
+
+flatpak-builder records that entry in the app metadata and nothing else. The
+AppImage is not downloaded by CI, is not part of the OSTree commit and is not in
+a `.flatpak` bundle: what this repository builds is ~100 kB, and the app itself
+is fetched from the upstream release on the user's machine when the app is
+installed, and again on every update that changes the entry. flatpak verifies
+the sha256 against the manifest before it does anything else.
+
+The reason is hosting cost. Packing the AppImage into the commit would put about
+300 MB per version into the repository, and every update would be served from
+here. The price is on the user's side: each upstream release is a full 337 MB
+download (a normal OSTree repo would only send the objects that changed), and
+since the download happens on the user's machine, an upstream asset that is
+deleted or replaced breaks new installs while CI stays green.
+
+### What apply_extra runs in
+
+`/app/bin/apply_extra` is executed by flatpak while installing, not by a build
+sandbox, and the sandbox it gets is much more restricted than what an app gets at
+runtime:
+
+| | |
+|---|---|
+| network, D-Bus, host access | none |
+| writable | `/app/extra` only, which is also the working directory |
+| `/proc` | **not mounted at all** |
+| `/usr` | the app's runtime (`org.gnome.Platform`), read-only |
+| uid | the installing user, or root via the system helper |
+
+flatpak builds that sandbox in `apply_extra_data()` (flatpak-dir.c) with
+`FLATPAK_RUN_FLAG_NO_PROC`, deliberately: a script that may run as root must not
+be able to reach outside files through `/proc/self/exe`.
+
+That last row is what breaks the obvious implementation. The AppImage runtime
+finds its own embedded SquashFS through `/proc/self/exe`; without it, it prints
+
+```
+Cannot open /proc/self/exe: No such file or directory
+Failed to get fs offset for /proc/self/exe
+```
+
+and exits 127 without reading a byte. Reproduced verbatim by running the
+AppImage in a hand-built sandbox with the same properties. The runtime has an
+override for exactly this case: `TARGET_APPIMAGE` names the file to read instead,
+and `apply_extra` sets it to `/app/extra/ani.appimage`. `--appimage-extract` then
+needs no FUSE and writes `squashfs-root/` in the working directory.
+
+Two smaller details the script handles:
+
+* flatpak does not mark extra data executable, so it `chmod +x`es the file
+  first;
+* `python3` comes from the runtime at `/usr/bin/python3` (Python 3.13 in
+  org.gnome.Platform 49), which is why the bootstrap step could stay a Python
+  script instead of being rewritten in shell.
+
+After unpacking, the tree is moved to `/app/extra/ani` and `make-bootstrap.py`
+patches it, exactly as it used to do at build time - it just runs on the user's
+machine now, once per installed version.
+
+To iterate on `apply_extra` without installing over and over, the same sandbox
+can be reproduced by hand:
+
+```sh
+bwrap --unshare-all --ro-bind $RUNTIME_FILES /usr --ro-bind $BUILD_DIR/files /app \
+      --bind $SOMEDIR /app/extra --symlink usr/bin /bin --symlink usr/lib /lib \
+      --symlink usr/lib64 /lib64 --dev /dev --tmpfs /tmp \
+      --chdir /app/extra --cap-drop ALL --setenv PATH /app/bin:/usr/bin \
+      -- /app/bin/apply_extra
+```
+
 ## App id
 
 The Flatpak id is `me.him188.ani`, taken from the application id upstream already
@@ -225,16 +307,21 @@ Linux desktop.
 ## Layout
 
 ```
-/app/ani/                 unpacked AppImage tree (usr/bin/Ani, usr/lib/...)
-/app/ani/usr/lib/app/     jpackage application dir: Ani.cfg, jars, native/,
-                          resources/
-/app/ani/usr/lib/app/animeko-bootstrap.jar
 /app/bin/ani              wrapper script (the Flatpak command)
+/app/bin/apply_extra      run by flatpak at install and update time
+/app/libexec/make-bootstrap.py
+/app/share/...            desktop file, metainfo, icons
+/app/extra/ani.appimage   exists only while apply_extra runs; it deletes it
+/app/extra/ani/           unpacked AppImage tree (usr/bin/Ani, usr/lib/...)
+/app/extra/ani/usr/lib/app/            jpackage application dir: Ani.cfg, jars,
+                                       native/, resources/
+/app/extra/ani/usr/lib/app/animeko-bootstrap.jar
 ```
 
-The app resolves everything relative to `usr/lib/app`, so the tree is kept
-byte-for-byte identical to the AppImage apart from `Ani.cfg` and the new
-bootstrap jar.
+Everything under `/app/extra` is what flatpak downloaded and `apply_extra`
+produced; everything else is the ~100 kB this repository builds. The app resolves
+all its paths relative to `usr/lib/app`, so that tree is kept byte-for-byte
+identical to the AppImage apart from `Ani.cfg` and the new bootstrap jar.
 
 ## Sandbox details
 
@@ -261,7 +348,7 @@ CEF detects this and runs its helper processes with `--no-sandbox` by itself,
 which is visible in the process list:
 
 ```
-/app/ani/usr/lib/runtime/lib/jcef_helper --type=gpu-process --no-sandbox ...
+/app/extra/ani/usr/lib/runtime/lib/jcef_helper --type=gpu-process --no-sandbox ...
 ```
 
 JCEF still reaches `INITIALIZED`, so the in-app browser used for Bangumi login
@@ -296,7 +383,7 @@ Anitorrent is loaded.          <- bundled libtorrent, GLIBC_2.38 symbols resolve
 FFmpegKit is loaded.           <- bundled FFmpeg
 mediampv is loaded.            <- bundled libmpv
 JCEF is initialized.           <- in-app browser
-Using bundled video enhancement shaders from /app/ani/usr/lib/app/resources/anime4k
+Using bundled video enhancement shaders from /app/extra/ani/usr/lib/app/resources/anime4k
 ```
 
 Every shared library dependency of `Ani`, `libskiko`, `libmediampv`,

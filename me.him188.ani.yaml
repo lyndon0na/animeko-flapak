@@ -1,5 +1,11 @@
 # Animeko (Ani) repackaged as a Flatpak from the official Linux AppImage.
 #
+# The AppImage is not a build input and is not redistributed from here. It is
+# declared as an extra-data source, so flatpak downloads it straight from the
+# upstream release on the user's machine, verifies its sha256 and then runs
+# apply_extra to unpack and patch it. This repository ships nothing but the
+# desktop metadata, the entry point and two helper scripts.
+#
 # The upstream AppImage ships a jpackage (JetBrains Runtime 21) launcher that
 # mis-sizes its JvmlLauncherData buffer when the classpath is very long:
 # Animeko's 274 jars expand to roughly 37 KB, the launcher silently truncates
@@ -9,7 +15,9 @@
 #
 # make-bootstrap.py moves the jar list out of Ani.cfg and into a manifest
 # Class-Path attribute of a single bootstrap jar, which keeps the launcher's
-# classpath down to one short entry. See README.md for the full analysis.
+# classpath down to one short entry. There is no AppImage here to patch, so it
+# runs from apply_extra at install time instead of from this build.
+# See README.md for the full analysis.
 
 app-id: me.him188.ani
 runtime: org.gnome.Platform
@@ -52,8 +60,8 @@ finish-args:
   - --talk-name=org.freedesktop.ScreenSaver
 
 build-options:
-  # Everything here is prebuilt by upstream; stripping the bundled JRE, libcef
-  # and the mediamp/libtorrent libraries gains nothing and risks mangling them.
+  # There is nothing to strip or debug here: the only ELF files are inside the
+  # AppImage, which is unpacked on the user's machine, not during this build.
   strip: false
   no-debuginfo: true
 
@@ -61,14 +69,10 @@ modules:
   - name: animeko
     buildsystem: simple
     build-commands:
-      - chmod +x ani-6.1.0-linux-x86_64.appimage
-      - ./ani-6.1.0-linux-x86_64.appimage --appimage-extract
-      - install -d "${FLATPAK_DEST}/ani"
-      - cp -a squashfs-root/usr "${FLATPAK_DEST}/ani/"
-      # Rewrite the launcher config and build the bootstrap jar. Must run after
-      # the tree is in place, because it resolves the jar names against it.
-      - python3 make-bootstrap.py "${FLATPAK_DEST}/ani/usr/lib/app"
       - install -Dm755 ani-wrapper "${FLATPAK_DEST}/bin/ani"
+      # flatpak looks for exactly this path when it has extra data to apply.
+      - install -Dm755 apply_extra "${FLATPAK_DEST}/bin/apply_extra"
+      - install -Dm755 make-bootstrap.py "${FLATPAK_DEST}/libexec/make-bootstrap.py"
       - install -Dm644 me.him188.ani.desktop
         "${FLATPAK_DEST}/share/applications/me.him188.ani.desktop"
       - install -Dm644 me.him188.ani.metainfo.xml
@@ -80,14 +84,20 @@ modules:
       - install -Dm644 me.him188.ani-128.png
         "${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/me.him188.ani.png"
     sources:
-      # Fetched from the upstream release. sha256 matches the published asset
-      # (open-ani/animeko v6.1.0, 336849400 bytes).
-      # For an offline build, replace this entry with:
-      #   - type: file
-      #     path: ani-6.1.0-linux-x86_64.appimage
-      - type: file
+      # Retrieved by flatpak on the user's machine, at install and at every
+      # update: flatpak-builder never downloads it, it only records the entry in
+      # the app metadata. sha256 and size are the published upstream asset
+      # (open-ani/animeko v6.1.0, 336849400 bytes). Bumping upstream means
+      # editing url, sha256 and size here - nothing else in this manifest.
+      - type: extra-data
+        filename: ani.appimage
         url: https://github.com/open-ani/animeko/releases/download/v6.1.0/ani-6.1.0-linux-x86_64.appimage
         sha256: abeeab01daf4a08ab1cd7c4d9c6999b1741a577d93ad7e2ef28b80ea12296aa7
+        size: 336849400
+        only-arches:
+          - x86_64
+      - type: file
+        path: apply_extra
       - type: file
         path: make-bootstrap.py
       - type: file

@@ -17,7 +17,7 @@ Build configuration that repackages the official Linux AppImage as a Flatpak.
 | Architecture | x86_64 |
 | Upstream source | https://github.com/open-ani/animeko |
 | Homepage | https://animeko.org/ |
-| Build input | `ani-6.1.0-linux-x86_64.appimage`, fetched from the upstream release and verified against its sha256 |
+| App payload | the upstream `ani-6.1.0-linux-x86_64.appimage`, declared as an [extra-data](https://docs.flatpak.org/en/latest/module-sources.html#extra-data) source: flatpak downloads it on the machine where the app is installed, verifies its sha256, and `apply_extra` unpacks and patches it there |
 
 ## Installation
 
@@ -29,6 +29,10 @@ CI publishes the built bundle as a release asset:
 curl -LO https://github.com/lyndon0na/animeko-flapak/releases/latest/download/animeko-6.1.0-x86_64.flatpak
 flatpak install --user ./animeko-6.1.0-x86_64.flatpak
 ```
+
+The bundle is a couple of hundred kilobytes: it carries the desktop metadata and
+an instruction telling flatpak where to get the app. Installing it downloads the
+~337 MB AppImage from the upstream GitHub release.
 
 ### Build locally
 
@@ -47,9 +51,10 @@ cd animeko-flapak
 flatpak-builder --user --install --force-clean --repo=repo build me.him188.ani.yaml
 ```
 
-The manifest fetches the AppImage from the upstream release URL with a sha256
-check, so nothing has to be downloaded by hand. For an offline build, swap that
-source for the local `path:` form shown in the comment next to it.
+Building needs no AppImage: it is an extra-data source, so the build only uses
+the runtime and the SDK. The AppImage is pulled on the machine where the app is
+installed, from the upstream release URL, checked against the sha256 recorded in
+the manifest.
 
 ### Export a bundle to hand to someone else
 
@@ -57,8 +62,8 @@ source for the local `path:` form shown in the comment next to it.
 flatpak build-bundle repo animeko-6.1.0-x86_64.flatpak me.him188.ani
 ```
 
-The bundle is ~280 MB, over GitHub's 100 MB per-file limit, so it is distributed
-as a release asset rather than committed.
+The bundle stays around a hundred kilobytes, because the app is not in it:
+whoever installs it downloads the AppImage from GitHub.
 
 ## Run
 
@@ -100,7 +105,8 @@ be anywhere. Narrow it to `xdg-videos` / `xdg-download`, or uncomment the
 | File | Purpose |
 |---|---|
 | `me.him188.ani.yaml` | Flatpak manifest (GNOME runtime 49) |
-| `make-bootstrap.py` | rewrites `Ani.cfg` and generates the bootstrap jar, see the [packaging notes](docs/packaging-notes.md) |
+| `apply_extra` | runs at install and update time: unpacks the AppImage and patches it |
+| `make-bootstrap.py` | rewrites `Ani.cfg` and generates the bootstrap jar; executed by `apply_extra`, see the [packaging notes](docs/packaging-notes.md) |
 | `ani-wrapper` | `/app/bin/ani` entry point |
 | `me.him188.ani.desktop` | launcher entry |
 | `me.him188.ani.metainfo.xml` | AppStream metadata |
@@ -131,6 +137,10 @@ tree is a gating step.
 
 * This is **unofficial** packaging. Upstream does not support it; please file
   issues against this repository.
+* The app is downloaded from GitHub when you install or update, not shipped by
+  this repository. Each upstream release is therefore a fresh ~337 MB download,
+  and if upstream ever deletes a release asset, new installs break until the
+  sha256 in the manifest is pointed at a new one.
 * App state lives in `~/.var/app/me.him188.ani/`, fully separate from a
   system-installed Animeko.
 * The App ID is upstream's own `me.him188.ani`; the reasoning is in the

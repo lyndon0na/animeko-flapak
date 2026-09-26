@@ -1,0 +1,40 @@
+#!/bin/sh
+# Unpacks the Animeko AppImage and applies the bootstrap workaround.
+#
+# flatpak runs this at install and update time, as root, inside a sandbox for
+# this app: the working directory is /app/extra, that is the only writable
+# place, and there is no network, D-Bus or host access. The AppImage itself has
+# already been downloaded from the upstream release and checked against the
+# sha256 in the manifest, so this script only has to turn it into /app/extra/ani,
+# which is what /app/bin/ani runs.
+set -eu
+
+APPIMAGE=/app/extra/ani.appimage
+APP_DIR=/app/extra/ani
+
+cd /app/extra
+
+# flatpak does not mark extra data executable.
+chmod +x "$APPIMAGE"
+
+# The AppImage runtime locates itself through /proc/self/exe, but flatpak's
+# apply_extra sandbox deliberately has no /proc at all (its base argv is built
+# with FLATPAK_RUN_FLAG_NO_PROC, so that a root-run script cannot reach outside
+# files through that symlink). Without it the runtime prints "Cannot open
+# /proc/self/exe" and exits 127 before reading a single byte. TARGET_APPIMAGE is
+# the runtime's own override for this case, and the sandbox has no network, so
+# it cannot be abused to point the runtime at a foreign file.
+#
+# --appimage-extract needs no FUSE and writes squashfs-root/ in the cwd.
+TARGET_APPIMAGE="$APPIMAGE" "$APPIMAGE" --appimage-extract >/dev/null
+rm -f "$APPIMAGE"
+
+# The wrapper and everything else resolve the app under /app/extra/ani.
+mv squashfs-root "$APP_DIR"
+
+test -x "$APP_DIR/usr/bin/Ani"
+test -f "$APP_DIR/usr/lib/app/Ani.cfg"
+
+# python3 comes from org.gnome.Platform; the app's own jpackage launcher cannot
+# survive its 37 KB classpath (see docs/packaging-notes.md).
+python3 /app/libexec/make-bootstrap.py "$APP_DIR/usr/lib/app"

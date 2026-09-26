@@ -1,6 +1,9 @@
 #!/bin/sh
 # Entry point for the Animeko Flatpak.
 #
+# The app tree is not part of this Flatpak: flatpak downloaded the upstream
+# AppImage and apply_extra unpacked it into /app/extra/ani at install time.
+#
 # Mirrors the AppImage's AppRun without exporting LD_LIBRARY_PATH: the jpackage
 # launcher already appends its own app directory to LD_LIBRARY_PATH (which is
 # what feeds java.library.path for libanitorrent, libmediampv and Skiko), and
@@ -22,7 +25,7 @@ if [ "${ANIMEKO_FLATPAK_KEEP_CORES:-0}" != "1" ]; then
     ulimit -c 0
 fi
 
-APPDIR=/app/ani
+APPDIR=/app/extra/ani
 export APPDIR
 export PATH="$APPDIR/usr/bin:$PATH"
 export XDG_DATA_DIRS="$APPDIR/usr/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"

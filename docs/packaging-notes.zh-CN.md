@@ -147,6 +147,76 @@ Main-Class: me.him188.ani.app.desktop.AniDesktop
 `anitorrent-native-desktop-*-linux-x64`）解包进 `native/` 后删掉了原 jar，
 但没有同步更新 `Ani.cfg`。
 
+## 安装时才下载 AppImage（extra-data）
+
+manifest 里 AppImage 是 extra-data 源，而不是构建输入：
+
+```yaml
+- type: extra-data
+  filename: ani.appimage
+  url: https://github.com/open-ani/animeko/releases/download/v6.1.0/ani-6.1.0-linux-x86_64.appimage
+  sha256: abeeab01daf4a08ab1cd7c4d9c6999b1741a577d93ad7e2ef28b80ea12296aa7
+  size: 336849400
+```
+
+flatpak-builder 只把这条记录写进应用 metadata，不会下载文件。AppImage 不在 OSTree commit 里，
+也不在 `.flatpak` bundle 里：本仓库构建出来的东西约 100 kB，应用本体在用户安装时从上游 release
+拉取，之后每次更新只要这条记录变了就再拉一次。flatpak 会先按 manifest 里的 sha256 校验，
+通过才继续。
+
+这么做的原因是托管成本：把 AppImage 打进 commit，等于每个版本往仓库里塞约 300 MB，
+并且每次更新的流量都由你出。代价转移到用户侧：每个上游版本都是一次完整的 337 MB 下载
+（普通 OSTree 仓库只传变化的对象）；而且下载发生在用户机器上，上游如果把 release 资产删了
+或换了，新用户会装不上，而你的 CI 仍然是绿的。
+
+### apply_extra 跑在什么样的沙箱里
+
+`/app/bin/apply_extra` 是 flatpak 在安装过程中执行的，不是构建沙箱，它拿到的沙箱比应用运行时
+受限得多：
+
+| | |
+|---|---|
+| 网络、D-Bus、宿主 | 全都没有 |
+| 可写 | 只有 `/app/extra`，同时也是工作目录 |
+| `/proc` | **完全不挂载** |
+| `/usr` | 应用的 runtime（`org.gnome.Platform`），只读 |
+| uid | 用户安装时是当前用户；系统安装时经 system helper 为 root |
+
+这个沙箱由 flatpak 的 `apply_extra_data()`（flatpak-dir.c）用 `FLATPAK_RUN_FLAG_NO_PROC`
+构建，是刻意为之：脚本在系统安装场景下可能以 root 运行，不能让 `/proc/self/exe`
+成为访问外部文件的通道。
+
+最后那一条正好会打死最直觉的写法。AppImage runtime 靠 `/proc/self/exe` 找到自己内嵌的
+SquashFS，没有它就会打印：
+
+```
+Cannot open /proc/self/exe: No such file or directory
+Failed to get fs offset for /proc/self/exe
+```
+
+然后一个字节都没读就退出 127。用手工搭的同性质沙箱复现完全一致。runtime 正好为这种情况留了
+开关：`TARGET_APPIMAGE` 指定要读的文件，`apply_extra` 把它设成 `/app/extra/ani.appimage`。
+随后 `--appimage-extract` 不需要 FUSE，会在工作目录写出 `squashfs-root/`。
+
+脚本另外处理两个细节：
+
+* flatpak 交给应用的是 644 权限的文件，所以先 `chmod +x`；
+* `python3` 来自 runtime 的 `/usr/bin/python3`（org.gnome.Platform 49 里是 Python 3.13），
+  所以引导 jar 那一步可以继续用 Python，不必改写成 shell。
+
+解包后的目录被移到 `/app/extra/ani`，再由 `make-bootstrap.py` 打补丁——和以前在构建期做的事
+完全一样，只是现在跑在用户机器上，每装一个版本跑一次。
+
+想反复调试 `apply_extra` 又不想一直重装，可以手工复刻同一个沙箱：
+
+```sh
+bwrap --unshare-all --ro-bind $RUNTIME_FILES /usr --ro-bind $BUILD_DIR/files /app \
+      --bind $SOMEDIR /app/extra --symlink usr/bin /bin --symlink usr/lib /lib \
+      --symlink usr/lib64 /lib64 --dev /dev --tmpfs /tmp \
+      --chdir /app/extra --cap-drop ALL --setenv PATH /app/bin:/usr/bin \
+      -- /app/bin/apply_extra
+```
+
 ## 应用 ID
 
 Flatpak 的 app-id 用的是 `me.him188.ani`，取自上游为这个应用已经在使用的 application id：
@@ -202,13 +272,19 @@ magick icons/appimage-icon.png -filter Lanczos -resize 256x256 icons/me.him188.a
 ## 目录布局
 
 ```
-/app/ani/                 解包后的 AppImage 目录树（usr/bin/Ani、usr/lib/...）
-/app/ani/usr/lib/app/     jpackage 应用目录：Ani.cfg、各种 jar、native/、resources/
-/app/ani/usr/lib/app/animeko-bootstrap.jar
 /app/bin/ani              包装脚本（Flatpak 的 command）
+/app/bin/apply_extra      flatpak 在安装/更新时执行
+/app/libexec/make-bootstrap.py
+/app/share/...            desktop 文件、metainfo、图标
+/app/extra/ani.appimage   只在 apply_extra 运行期间存在，脚本会删掉它
+/app/extra/ani/           解包后的 AppImage 目录树（usr/bin/Ani、usr/lib/...）
+/app/extra/ani/usr/lib/app/            jpackage 应用目录：Ani.cfg、各种 jar、
+                                       native/、resources/
+/app/extra/ani/usr/lib/app/animeko-bootstrap.jar
 ```
 
-应用所有路径都相对于 `usr/lib/app` 解析，所以这棵树与 AppImage 保持逐字节一致，
+`/app/extra` 下的全部内容都是 flatpak 下载、apply_extra 生成的；其余部分才是本仓库构建的
+那约 100 kB。应用所有路径都相对于 `usr/lib/app` 解析，所以这棵树与 AppImage 保持逐字节一致，
 只改了 `Ani.cfg` 并新增了引导 jar。
 
 ## 沙箱细节
@@ -235,7 +311,7 @@ CEF 会自行检测到这一点，并给它的 helper 进程加上 `--no-sandbox
 在进程列表里可以看到：
 
 ```
-/app/ani/usr/lib/runtime/lib/jcef_helper --type=gpu-process --no-sandbox ...
+/app/extra/ani/usr/lib/runtime/lib/jcef_helper --type=gpu-process --no-sandbox ...
 ```
 
 因此 JCEF 仍能到达 `INITIALIZED`，用于 Bangumi 登录的内置浏览器可正常工作。
@@ -267,7 +343,7 @@ Anitorrent is loaded.          <- 自带 libtorrent，GLIBC_2.38 符号可解析
 FFmpegKit is loaded.           <- 自带 FFmpeg
 mediampv is loaded.            <- 自带 libmpv
 JCEF is initialized.           <- 内置浏览器
-Using bundled video enhancement shaders from /app/ani/usr/lib/app/resources/anime4k
+Using bundled video enhancement shaders from /app/extra/ani/usr/lib/app/resources/anime4k
 ```
 
 `Ani`、`libskiko`、`libmediampv`、`libanitorrent`、`libcef`、`libjvm`、`libmpv`
