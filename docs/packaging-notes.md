@@ -43,6 +43,45 @@ sudo rm -f /var/lib/systemd/coredump/core.jcef_helper.*
 A real fix has to come from upstream: a JBR/CEF that implements the flag, or a
 component-updater switch CEF lets the host pass in.
 
+## Sleep inhibition needs explicit D-Bus grants
+
+While a video plays, Animeko inhibits sleep and the screen saver through two
+paths: it shells out to `systemd-inhibit` (logind, system bus) and it calls the
+`org.freedesktop.ScreenSaver` D-Bus interface. The first came with
+[#2773](https://github.com/open-ani/animeko/pull/2773), the second with
+[#2925](https://github.com/open-ani/animeko/pull/2925).
+
+Both fail inside the sandbox by default. The system bus is not even mounted
+(`/run/dbus/system_bus_socket` does not exist), and the session bus proxy rejects
+`org.freedesktop.ScreenSaver` as an ungranted name, so `Inhibit` fails silently
+and the machine suspends mid-playback. The GNOME runtime also ships no
+`systemd-inhibit` binary, so that path cannot work here regardless of
+permissions.
+
+Granting the two names fixes it:
+
+```yaml
+- --talk-name=org.freedesktop.ScreenSaver
+- --system-talk-name=org.freedesktop.login1
+```
+
+Verified on Plasma 6 by watching the call on the session bus and by the power
+management panel listing the inhibitor:
+
+```
+method call ... interface=org.freedesktop.ScreenSaver; member=Inhibit
+   string "Animeko"
+   string "Playing video"
+```
+
+```
+[ScreenSaver] D-Bus inhibit cookie: 951
+[ScreenSaver] Inhibited via D-Bus org.freedesktop.ScreenSaver
+```
+
+The power management panel ("Prevent automatic locking and sleeping") then shows
+`Animeko is currently inhibiting the screen locker. (Playing video)`.
+
 ## Why the AppImage does not start as shipped
 
 The AppImage is a jpackage app-image (JetBrains Runtime 21). Its native launcher

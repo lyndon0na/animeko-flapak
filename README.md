@@ -89,6 +89,8 @@ well.
 | `--talk-name=org.kde.StatusNotifierWatcher` | System tray |
 | `--own-name=org.kde.StatusNotifierItem-2-1` | The tray icon's own D-Bus name |
 | `--talk-name=org.freedesktop.Notifications` | Notifications |
+| `--talk-name=org.freedesktop.ScreenSaver` | Inhibit the screen saver and sleep while a video plays |
+| `--system-talk-name=org.freedesktop.login1` | logind, for the same inhibit via `systemd-inhibit` |
 
 `--filesystem=home` is the broadest grant here, because the cache directory can
 be anywhere. Narrow it to `xdg-videos` / `xdg-download`, or uncomment the

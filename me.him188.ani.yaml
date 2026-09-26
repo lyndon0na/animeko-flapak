@@ -42,6 +42,14 @@ finish-args:
   - --talk-name=org.kde.StatusNotifierWatcher
   - --own-name=org.kde.StatusNotifierItem-2-1
   - --talk-name=org.freedesktop.Notifications
+  # Sleep and screen-saver inhibition while a video plays. Animeko offers two
+  # paths: it shells out to `systemd-inhibit` (logind, system bus) and it calls
+  # the org.freedesktop.ScreenSaver D-Bus interface. The GNOME runtime ships no
+  # systemd-inhibit binary, so the D-Bus path is the one that matters here.
+  # Without these grants the Inhibit call fails silently and the machine still
+  # suspends during playback.
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --system-talk-name=org.freedesktop.login1
 
 build-options:
   # Everything here is prebuilt by upstream; stripping the bundled JRE, libcef

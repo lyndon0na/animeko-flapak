@@ -35,6 +35,41 @@ sudo rm -f /var/lib/systemd/coredump/core.jcef_helper.*
 真正的修复只能来自上游：换用实现了该开关的 JBR/CEF，或者 CEF 提供一个允许宿主传入组件更新
 开关的口子。
 
+## 休眠抑制需要显式授予 D-Bus 权限
+
+播放视频时，Animeko 通过两条路抑制休眠与熄屏：调用 `systemd-inhibit` 命令（logind，系统总线），
+以及调用 `org.freedesktop.ScreenSaver` 这个 D-Bus 接口。前者来自
+[#2773](https://github.com/open-ani/animeko/pull/2773)，后者来自
+[#2925](https://github.com/open-ani/animeko/pull/2925)。
+
+在沙箱里这两条路默认都失败：系统总线根本没有挂载（`/run/dbus/system_bus_socket` 不存在），
+而会话总线代理又把 `org.freedesktop.ScreenSaver` 当作未授权的名字拒绝掉，于是 `Inhibit`
+静默失败，播放时机器照样休眠。另外 GNOME runtime 里**没有 `systemd-inhibit` 这个命令**，
+所以即便给了权限，那条路在这里也走不通。
+
+把这两个名字授出去即可修好：
+
+```yaml
+- --talk-name=org.freedesktop.ScreenSaver
+- --system-talk-name=org.freedesktop.login1
+```
+
+在 Plasma 6 上已通过监视会话总线上的调用、以及电源管理面板列出的抑制者确认：
+
+```
+method call ... interface=org.freedesktop.ScreenSaver; member=Inhibit
+   string "Animeko"
+   string "Playing video"
+```
+
+```
+[ScreenSaver] D-Bus inhibit cookie: 951
+[ScreenSaver] Inhibited via D-Bus org.freedesktop.ScreenSaver
+```
+
+电源管理面板（「阻止自动锁屏和睡眠」）随后会显示
+「Animeko 正在阻止锁屏。(Playing video)」。
+
 ## 为什么 AppImage 原样无法启动
 
 这个 AppImage 是 jpackage 生成的 app-image（JetBrains Runtime 21）。它的原生启动器会读取
