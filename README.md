@@ -21,18 +21,25 @@ Build configuration that repackages the official Linux AppImage as a Flatpak.
 
 ## Installation
 
-### From the release
+### From the repository
 
-CI publishes the built bundle as a release asset:
+```sh
+flatpak install --user https://lyndon0na.github.io/animeko-flapak/me.him188.ani.flatpakref
+```
+
+This adds the remote as well, so later versions arrive through `flatpak update`
+(or through the desktop's software centre). Installing downloads the ~337 MB
+AppImage from GitHub, which is where the application itself comes from.
+
+### From the offline bundle
+
+Every release also carries a bundle. It is a couple of hundred kilobytes and
+names the same remote, so installing it sets up updates too:
 
 ```sh
 curl -LO https://github.com/lyndon0na/animeko-flapak/releases/latest/download/animeko-6.1.0-x86_64.flatpak
 flatpak install --user ./animeko-6.1.0-x86_64.flatpak
 ```
-
-The bundle is a couple of hundred kilobytes: it carries the desktop metadata and
-an instruction telling flatpak where to get the app. Installing it downloads the
-~337 MB AppImage from the upstream GitHub release.
 
 ### Build locally
 
@@ -121,7 +128,9 @@ of width.
 | `me.him188.ani.metainfo.xml` | AppStream metadata |
 | `icons/me.him188.ani-*.png` | installed icons (128 / 256 / 512) |
 | `icons/appimage-icon.png` | source of those icons, taken from the AppImage's own `icon.png` |
-| `.github/workflows/build.yml` | CI: builds, verifies and publishes the bundle |
+| `me.him188.ani.flatpakref.in` | template for the one-line install, filled in and published by CI |
+| `me.him188.ani.flatpakrepo.in` | same, for adding the remote by hand |
+| `.github/workflows/build.yml` | CI: builds, verifies, publishes the repository and the release |
 | `docs/` | [Packaging notes](docs/packaging-notes.md) |
 | `LICENSE.txt` | AGPL-3.0 license |
 
@@ -129,27 +138,57 @@ of width.
 
 `.github/workflows/build.yml`:
 
-* a push to `main` or a manual dispatch builds, verifies the packaged tree and
-  uploads the bundle as a workflow artifact;
-* a `v*` tag additionally creates a GitHub release and attaches the bundle to it.
+* a push to `main` or a manual dispatch builds, installs, verifies the deployed
+  tree and uploads the bundle as a workflow artifact;
+* a `v*` tag additionally signs the build, updates the published repository and
+  creates a GitHub release with the bundle attached.
+
+The runner is headless, so the GUI smoke test runs under Xvfb as a best-effort
+step that reports without failing the build. The structural checks are gating.
 
 ```sh
 git tag v6.1.0
 git push origin v6.1.0
 ```
 
-The runner is headless, so the GUI smoke test runs under Xvfb as a best-effort
-step that reports without failing the build. The structural check of the packaged
-tree is a gating step.
+## Publishing
+
+A tag publishes the repository, and that needs two things set up once:
+
+1. **`GPG_PRIVATE_KEY`** as a repository secret: the ASCII-armoured private key
+   of the signing key. CI derives the key id and the public key from it, signs
+   the commit and the repository summary, and writes the public key into the
+   descriptors.
+2. **GitHub Pages** serving the `gh-pages` branch (Settings → Pages → Source).
+   Every tag pushes the OSTree repository, `me.him188.ani.flatpakref`,
+   `me.him188.ani.flatpakrepo` and an icon to that branch.
+
+To release a new version, edit `url`, `sha256` and `size` in the manifest (and
+the `<release>` entry in the metainfo), commit, and tag.
+
+Two things worth knowing before you tag:
+
+* **Every published commit costs each user a full ~337 MB download.** flatpak
+  re-downloads and re-applies extra data whenever the commit changes, even when
+  the extra-data record did not - `flatpak update -v` prints
+  `Loading …ani-6.1.0-linux-x86_64.appimage using curl` every time. Batch your
+  changes; do not cut metadata-only releases.
+* The published repository is a few hundred kilobytes per version (the first one
+  was 380 KB), because the application is not in it - GitHub Pages is plenty.
+  Losing the signing key means every user has to add the remote again with the
+  new key, so keep a backup.
+
+The descriptors committed here are templates: `@PAGES_URL@` and `@GPGKEY@` are
+substituted at publish time, so no key material is in the repository.
 
 ## Notes
 
 * This is **unofficial** packaging. Upstream does not support it; please file
   issues against this repository.
 * The app is downloaded from GitHub when you install or update, not shipped by
-  this repository. Each upstream release is therefore a fresh ~337 MB download,
-  and if upstream ever deletes a release asset, new installs break until the
-  sha256 in the manifest is pointed at a new one.
+  this repository, so every published version is a fresh ~337 MB download. If
+  upstream ever deletes a release asset, new installs break until the sha256 in
+  the manifest is pointed at a new one.
 * App state lives in `~/.var/app/me.him188.ani/`, fully separate from a
   system-installed Animeko.
 * The App ID is upstream's own `me.him188.ani`; the reasoning is in the

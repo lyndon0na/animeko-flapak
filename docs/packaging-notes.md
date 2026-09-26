@@ -246,6 +246,48 @@ bwrap --unshare-all --ro-bind $RUNTIME_FILES /usr --ro-bind $BUILD_DIR/files /ap
       -- /app/bin/apply_extra
 ```
 
+## Publishing and the update channel
+
+The `gh-pages` branch carries an OSTree repository, which is what `flatpak
+update` pulls from. CI updates it on every tag: the build is signed
+(`--gpg-sign`), `flatpak build-update-repo --gpg-sign --generate-static-deltas`
+refreshes the summary and the deltas, and the repository plus the two
+descriptors are pushed. `@PAGES_URL@` and `@GPGKEY@` in
+`me.him188.ani.flatpakref.in` / `me.him188.ani.flatpakrepo.in` are substituted at
+that point.
+
+Because the application is an extra-data source, the repository holds metadata
+only:
+
+| | |
+|---|---|
+| first version | 380 KB |
+| each version after that | ~100 KB (a new commit and its delta) |
+| what a user's update costs | ~100 KB from here, then 337 MB of payload from upstream GitHub |
+
+### Every published commit costs the user 337 MB
+
+Measured while implementing this, with `flatpak update -v`:
+
+```
+F: Loading https://github.com/open-ani/animeko/releases/download/v6.1.0/ani-6.1.0-linux-x86_64.appimage using curl
+F: extracting extra data
+F: Running /app/bin/apply_extra
+```
+
+Even when the new commit carries an *identical* extra-data record (same
+url/sha256/size), flatpak downloads the file again and re-runs `apply_extra`. A
+release that only changes the desktop file therefore still costs every user
+337 MB - batch changes instead of publishing often.
+
+### The key
+
+One signing key (`GPG_PRIVATE_KEY`) is enough; CI exports the public half from it
+on every publish. Losing the private key means every user has to add the remote
+again, so back it up outside the repository. Rotating means: replace the secret,
+publish, and have users `flatpak remote-delete animeko` before installing from
+the new flatpakref.
+
 ## App id
 
 The Flatpak id is `me.him188.ani`, taken from the application id upstream already

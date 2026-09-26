@@ -217,6 +217,41 @@ bwrap --unshare-all --ro-bind $RUNTIME_FILES /usr --ro-bind $BUILD_DIR/files /ap
       -- /app/bin/apply_extra
 ```
 
+## 发布与更新通道
+
+`gh-pages` 分支上放着一个 OSTree 仓库，也就是 `flatpak update` 拉取的地方。它由 CI 在打标签时
+更新：构建时加上 `--gpg-sign`，然后 `flatpak build-update-repo --gpg-sign --generate-static-deltas`
+刷新 summary 和 delta，最后把仓库和两个描述文件推上去（`me.him188.ani.flatpakref.in` /
+`me.him188.ani.flatpakrepo.in` 里的 `@PAGES_URL@`、`@GPGKEY@` 在此时替换）。
+
+因为应用本体是 extra-data，仓库里只有元数据：
+
+| | |
+|---|---|
+| 第一个版本 | 380 KB |
+| 之后的每个版本 | ~100 KB（主要是新 commit 和 delta） |
+| 用户更新时 | 从你这里拉 ~100 KB 元数据，再从上游 GitHub 下 337 MB payload |
+
+### 每次发布都会让用户重下 337 MB
+
+这一点在实现时实测确认过（`flatpak update -v`）：
+
+```
+F: Loading https://github.com/open-ani/animeko/releases/download/v6.1.0/ani-6.1.0-linux-x86_64.appimage using curl
+F: extracting extra data
+F: Running /app/bin/apply_extra
+```
+
+即使新 commit 里的 extra-data 记录与上一版**完全一样**（同样的 url/sha256/size），flatpak 依然
+会重新下载并重新执行 `apply_extra`。所以"只改了桌面文件"的版本也会让每个用户重下 337 MB——
+发版要攒着一起发。
+
+### 密钥
+
+签名密钥只需要一把（`GPG_PRIVATE_KEY` secret），公钥由 CI 从私钥当场导出。密钥丢失等于所有用户都要重新
+添加 remote，所以私钥要在仓库外备份。轮换密钥的流程是：换 secret → 重新发布 → 用户在
+`flatpak remote-delete animeko` 后用新的 flatpakref 重新添加。
+
 ## 应用 ID
 
 Flatpak 的 app-id 用的是 `me.him188.ani`，取自上游为这个应用已经在使用的 application id：
