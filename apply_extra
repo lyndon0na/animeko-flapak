@@ -1,12 +1,13 @@
 #!/bin/sh
 # Unpacks the Animeko AppImage and applies the bootstrap workaround.
 #
-# flatpak runs this at install and update time, as root, inside a sandbox for
-# this app: the working directory is /app/extra, that is the only writable
-# place, and there is no network, D-Bus or host access. The AppImage itself has
-# already been downloaded from the upstream release and checked against the
-# sha256 in the manifest, so this script only has to turn it into /app/extra/ani,
-# which is what /app/bin/ani runs.
+# flatpak runs this at install and update time, as the installing user (or as
+# root through the system helper), inside a sandbox for this app. The working
+# directory is /app/extra, that is the only writable place, and there is no
+# network, D-Bus or host access. The AppImage itself has already been downloaded
+# from the upstream release and checked against the sha256 in the manifest, so
+# this script only has to turn it into /app/extra/ani, which is what /app/bin/ani
+# runs.
 set -eu
 
 APPIMAGE=/app/extra/ani.appimage
