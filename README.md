@@ -4,7 +4,7 @@ Build configuration that repackages the official Linux AppImage as a Flatpak.
 
 **English** | [简体中文](README.zh-CN.md) | [Packaging notes](docs/packaging-notes.md)
 
-[![build](https://github.com/lyndon0na/animeko-flapak/actions/workflows/build.yml/badge.svg)](https://github.com/lyndon0na/animeko-flapak/actions/workflows/build.yml)
+[![build](https://github.com/lyndon0na/animeko-flatpak/actions/workflows/build.yml/badge.svg)](https://github.com/lyndon0na/animeko-flatpak/actions/workflows/build.yml)
 
 ## App info
 
@@ -24,7 +24,7 @@ Build configuration that repackages the official Linux AppImage as a Flatpak.
 ### From the repository
 
 ```sh
-flatpak install --user https://lyndon0na.github.io/animeko-flapak/me.him188.ani.flatpakref
+flatpak install --user https://lyndon0na.github.io/animeko-flatpak/me.him188.ani.flatpakref
 ```
 
 This adds the remote as well, so later versions arrive through `flatpak update`
@@ -43,8 +43,8 @@ flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flath
 flatpak install --user flathub org.gnome.Platform//49 org.gnome.Sdk//49
 
 # clone and build
-git clone https://github.com/lyndon0na/animeko-flapak.git
-cd animeko-flapak
+git clone https://github.com/lyndon0na/animeko-flatpak.git
+cd animeko-flatpak
 flatpak-builder --user --install --force-clean --repo=repo build me.him188.ani.yaml
 ```
 

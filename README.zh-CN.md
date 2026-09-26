@@ -4,7 +4,7 @@
 
 [English](README.md) ｜ **简体中文** ｜ [打包技术说明](docs/packaging-notes.zh-CN.md)
 
-[![build](https://github.com/lyndon0na/animeko-flapak/actions/workflows/build.yml/badge.svg)](https://github.com/lyndon0na/animeko-flapak/actions/workflows/build.yml)
+[![build](https://github.com/lyndon0na/animeko-flatpak/actions/workflows/build.yml/badge.svg)](https://github.com/lyndon0na/animeko-flatpak/actions/workflows/build.yml)
 
 ## 应用信息
 
@@ -24,7 +24,7 @@
 ### 方式一：从仓库安装
 
 ```sh
-flatpak install --user https://lyndon0na.github.io/animeko-flapak/me.him188.ani.flatpakref
+flatpak install --user https://lyndon0na.github.io/animeko-flatpak/me.him188.ani.flatpakref
 ```
 
 这一条命令会同时把 remote 配好，之后的版本交给 `flatpak update`（或桌面软件中心）。安装时会从
@@ -42,8 +42,8 @@ flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flath
 flatpak install --user flathub org.gnome.Platform//49 org.gnome.Sdk//49
 
 # 克隆并构建
-git clone https://github.com/lyndon0na/animeko-flapak.git
-cd animeko-flapak
+git clone https://github.com/lyndon0na/animeko-flatpak.git
+cd animeko-flatpak
 flatpak-builder --user --install --force-clean --repo=repo build me.him188.ani.yaml
 ```
 
