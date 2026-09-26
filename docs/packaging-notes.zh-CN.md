@@ -2,6 +2,39 @@
 
 面向需要审计或改动这份打包配置的读者。安装与使用请看 [README](../README.zh-CN.md)。
 
+## 已知问题：播放时 CEF 的解包进程反复崩溃
+
+上游打包进来的 CEF（Chrome 137）在 Chromium 组件更新器解包组件时，会以
+`*** stack smashing detected ***` 中止它的 `unzip.mojom.Unzipper` 工具进程。CEF 没有实现
+`--change-stack-guard-on-fork`，导致 fork 出来的子进程栈保护金丝雀与 glibc 的预期不一致，
+`__stack_chk_fail` 直接调 `abort()`。
+
+这个问题在普通 Ubuntu 上用 CEF 官方 minimal 示例就能复现，与本沙箱无关，见
+[chromiumembedded/cef#3912](https://github.com/chromiumembedded/cef/issues/3912)。
+组件更新器在后台运行，所以崩溃集中出现在播放期间。
+
+功能上无害：更新器会重试，组件最终确实装上了。代价是崩溃报告——每次 SIGABRT 都会写一个
+约 110 MB 的 core dump，而 KDE 的 drkonqi 会对每条 systemd-coredump 的 journal 记录弹出
+崩溃窗口。实测一次组件更新风暴是 53 秒内 24 次 abort，即 24 个弹窗和 2.6 GB 的 dump。
+
+因此 `ani-wrapper` 把 `RLIMIT_CORE` 设为 0。没有 core 文件，drkonqi 就没有东西可展示，
+弹窗和 dump 增长都会停止（已验证：`systemd-coredump` 记录 "Resource limits disable core
+dumping"，且 `drkonqi-coredump-gui` 不会被启动）。需要调试时设 `ANIMEKO_FLATPAK_KEEP_CORES=1`
+即可保留 core：
+
+```sh
+flatpak run --env=ANIMEKO_FLATPAK_KEEP_CORES=1 me.him188.ani
+```
+
+在此修复生效之前产生的 dump 属主是 root，需要 sudo 删除：
+
+```sh
+sudo rm -f /var/lib/systemd/coredump/core.jcef_helper.*
+```
+
+真正的修复只能来自上游：换用实现了该开关的 JBR/CEF，或者 CEF 提供一个允许宿主传入组件更新
+开关的口子。
+
 ## 为什么 AppImage 原样无法启动
 
 这个 AppImage 是 jpackage 生成的 app-image（JetBrains Runtime 21）。它的原生启动器会读取

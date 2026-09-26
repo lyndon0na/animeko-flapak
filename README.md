@@ -134,6 +134,10 @@ tree is a gating step.
   system-installed Animeko.
 * The App ID is upstream's own `me.him188.ani`; the reasoning is in the
   [packaging notes](docs/packaging-notes.md).
+* CEF aborts its unzip utility process each time Chromium's component updater
+  runs, which made KDE show a crash dialog per abort. The wrapper disables core
+  dumps so drkonqi stays quiet — see the
+  [known issue](docs/packaging-notes.md#known-issue-cefs-unzip-utility-aborts-during-playback).
 
 ## License
 

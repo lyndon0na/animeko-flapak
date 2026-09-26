@@ -3,6 +3,46 @@
 For readers who need to audit or change this packaging. For installation and
 usage see the [README](../README.md).
 
+## Known issue: CEF's unzip utility aborts during playback
+
+The CEF build bundled upstream (Chrome 137) aborts its `unzip.mojom.Unzipper`
+utility process with `*** stack smashing detected ***` every time Chromium's
+component updater unpacks a downloaded component. CEF does not implement
+`--change-stack-guard-on-fork`, so the stack canary of the forked child does not
+match what glibc expects and `__stack_chk_fail` calls `abort()`.
+
+It reproduces with CEF's own minimal example on plain Ubuntu, so it is not
+caused by this sandbox — see
+[chromiumembedded/cef#3912](https://github.com/chromiumembedded/cef/issues/3912).
+The component updater runs in the background, which is why the burst shows up
+during playback.
+
+Functionally it is harmless: the updater retries and the components do end up
+installed. The cost is the crash reporting. Every SIGABRT writes a ~110 MB core
+dump, and KDE's drkonqi reacts to each systemd-coredump journal entry with a
+crash dialog — one observed burst was 24 aborts in 53 seconds, i.e. 24 dialogs
+and 2.6 GB of dumps.
+
+`ani-wrapper` therefore sets `RLIMIT_CORE` to 0. With no core file there is
+nothing for drkonqi to show, so both the dialogs and the dump growth stop
+(verified: `systemd-coredump` logs "Resource limits disable core dumping" and
+`drkonqi-coredump-gui` is not started). Set `ANIMEKO_FLATPAK_KEEP_CORES=1` to
+keep cores when debugging:
+
+```sh
+flatpak run --env=ANIMEKO_FLATPAK_KEEP_CORES=1 me.him188.ani
+```
+
+Dumps collected before this was in place belong to root and have to be removed
+with `sudo`:
+
+```sh
+sudo rm -f /var/lib/systemd/coredump/core.jcef_helper.*
+```
+
+A real fix has to come from upstream: a JBR/CEF that implements the flag, or a
+component-updater switch CEF lets the host pass in.
+
 ## Why the AppImage does not start as shipped
 
 The AppImage is a jpackage app-image (JetBrains Runtime 21). Its native launcher
